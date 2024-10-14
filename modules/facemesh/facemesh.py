@@ -11,7 +11,7 @@ import os
 import torch
 import numpy as np
 import torchvision
-import nova_utils.data.stream
+import discover_utils.data.stream
 
 # Add local dir to path for relative imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -20,11 +20,11 @@ torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
 from facemesh_source import _FaceMesh
 from utils import select_bounding_box, get_low_confidence_detections, crop_and_resize, rel_to_abs, abs_to_rel
-from nova_utils.interfaces.server_module import Processor
-from nova_utils.utils.cache_utils import get_file
-from nova_utils.utils.log_utils import log
-from nova_utils.data.static import Image
-from nova_utils.data.stream import SSIStream
+from discover_utils.interfaces.server_module import Processor
+from discover_utils.utils.cache_utils import get_file
+from discover_utils.utils.log_utils import log
+from discover_utils.data.static import Image
+from discover_utils.data.stream import SSIStream
 
 PYTORCH_ENABLE_MPS_FALLBACK = 1
 INPUT_ID = "data"
@@ -98,7 +98,7 @@ class FaceMesh(Processor):
         face_bb_stream = self.session_manager.input_data[INPUT_ID_BB].data
 
         # Append batch dimension
-        if isinstance(data_object, nova_utils.data.static.Image):
+        if isinstance(data_object, discover_utils.data.static.Image):
             data = np.expand_dims(data, 0)
 
         #bounding_boxes = []
@@ -271,8 +271,8 @@ if __name__ == "__main__":
         plt.show()
 
     PYTORCH_ENABLE_MPS_FALLBACK = 1
-    from nova_utils.utils.ssi_xml_utils import Trainer
-    from nova_utils.data.provider.data_manager import DatasetManager
+    from discover_utils.utils.ssi_xml_utils import Trainer
+    from discover_utils.data.provider.data_manager import DatasetManager
 
     bf_trainer = Trainer()
     bf_trainer.load_from_file("facemesh.trainer")
