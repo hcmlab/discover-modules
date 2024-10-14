@@ -1,4 +1,4 @@
-""" Driver Emotion
+""" WhisperX
 
 Author:
     Dominik Schiller <dominik.schiller@uni-a.de>
