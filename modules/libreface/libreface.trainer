@@ -1,0 +1,15 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true"/>
+<meta backend="nova-server" category="Face" description="Aligns face for downstream LibreFace AU and FER predictions" is_iterable="False">
+    <io type="input" id="video" data="stream:Video" default_value="video" />
+    <io type="input" id="facemesh" data="stream:SSIStream:feature;face;landmarks:facemesh" default_value="face_mesh" />
+    <io type="output" id="libreface" data="stream:SSIStream:feature;face;libreface" default_value="libreface" />
+    <io type="output" id="aligned" data="stream:Video" default_value="face_aligned" />
+    <uri id="au_enc" url="https://github.com/ihp-lab/OpenSense/raw/33dcaf80d0c07ca2751f489b40d4399b78972e75/Utilities/LibreFace/LibreFace_AU_Encoder.onnx" hash="4293e76544cebb4c5860683e8c119c9b" tar="False" />
+    <uri id="au_reg" url="https://github.com/ihp-lab/OpenSense/raw/33dcaf80d0c07ca2751f489b40d4399b78972e75/Utilities/LibreFace/LibreFace_AU_Intensity.onnx" hash="f3f5a6bc36b2ad3e35ff7ad5722b20ad" tar="False" />
+    <uri id="au_det" url="https://github.com/ihp-lab/OpenSense/raw/33dcaf80d0c07ca2751f489b40d4399b78972e75/Utilities/LibreFace/LibreFace_AU_Presence.onnx" hash="4115bc9d492128112d46eccc146b9ecb" tar="False" />
+    <uri id="fer" url="https://github.com/ihp-lab/OpenSense/raw/33dcaf80d0c07ca2751f489b40d4399b78972e75/Utilities/LibreFace/LibreFace_FE.onnx" hash="ecd495f9cef2b81f5f95c2dfb74833d5" tar="False" />
+</meta>
+<model create="LibreFace" script="libreface.py" optstr="{batch_size:STRING:250}"/>
+</trainer>
