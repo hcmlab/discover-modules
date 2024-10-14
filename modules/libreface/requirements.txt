@@ -1,0 +1,6 @@
+numpy<2
+hcai-nova-utils
+scipy
+Pillow
+multiprocessing_on_dill
+onnxruntime
