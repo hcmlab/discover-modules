@@ -1,0 +1,5 @@
+hcai-discover-utils
+torch
+torchaudio
+torchvision
+opencv-python
