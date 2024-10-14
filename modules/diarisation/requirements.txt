@@ -1,0 +1,6 @@
+numpy<2
+hcai-nova-utils
+finch-clust
+pynndescent
+speechbrain<=0.5.16
+pyannote-audio<=3.1.1
