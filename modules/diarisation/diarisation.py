@@ -1,5 +1,5 @@
 import os
-from nova_utils.interfaces.server_module import Processor
+from discover_utils.interfaces.server_module import Processor
 
 REQUIREMENTS = [
 
@@ -105,7 +105,7 @@ class Diarisation(Processor):
 
         elif self.options['speaker_embedding'] == 'wespeaker':
             if not (path := Path(models[self.options['speaker_embedding']])).exists():
-                from nova_utils.utils.cache_utils import retreive_from_url
+                from discover_utils.utils.cache_utils import retreive_from_url
                 url = 'https://wespeaker-1256283475.cos.ap-shanghai.myqcloud.com/models/voxceleb/voxceleb_resnet34_LM.onnx'
                 path.parent.mkdir(exist_ok=True)
                 retreive_from_url(url, path)
