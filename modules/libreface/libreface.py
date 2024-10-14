@@ -11,12 +11,12 @@ import scipy.ndimage
 from PIL import Image
 from multiprocessing_on_dill import Pool
 
-from nova_utils.interfaces.server_module import Processor
-from nova_utils.utils.log_utils import log
+from discover_utils.interfaces.server_module import Processor
+from discover_utils.utils.log_utils import log
 from time import perf_counter
 
-from nova_utils.data.stream import SSIStream, Video
-from nova_utils.utils.cache_utils import get_file, validate_file
+from discover_utils.data.stream import SSIStream, Video
+from discover_utils.utils.cache_utils import get_file, validate_file
 import onnxruntime as ort
 
 
