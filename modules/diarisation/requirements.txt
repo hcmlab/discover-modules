@@ -1,0 +1,5 @@
+hcai-discover-utils
+finch-clust
+pynndescent
+speechbrain
+pyannote-audio
