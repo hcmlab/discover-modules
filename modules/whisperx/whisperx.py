@@ -4,7 +4,7 @@ Date: 18.10.2023
 
 """
 
-from nova_utils.interfaces.server_module import Processor
+from discover_utils.interfaces.server_module import Processor
 import sys
 
 
@@ -21,11 +21,12 @@ _default_options = {"model": "tiny", "alignment_mode": "segment", "batch_size": 
 
 # TODO: add log infos, 
 #  add whisperx' diarisation? no, it's just pyannote
+#  apparently whisperx is also a dead project by now (october 2024)
 class WhisperX(Processor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # string treatment
+        # string treatment for number extraction
         try:
             self.options['batch_size'] = int(self.options['batch_size'])
         except ValueError:
@@ -43,10 +44,14 @@ class WhisperX(Processor):
             self.options['vad_offset'] = _default_options['vad_offset']
         
         self.options = _default_options | self.options
+        
+        # expand string shorthands
         if self.options['language'] == 'auto':
             self.options['language'] = None
+        if self.options['model'] == 'large-v3-turbo':
+            self.options['model'] = 'deepdml/faster-whisper-large-v3-turbo-ct2'
+        
         self.device = None
-        self.ds_iter = None
         self.session_manager = None
 
     def process_data(self, ds_manager) -> dict:
@@ -64,7 +69,7 @@ class WhisperX(Processor):
             model = whisperx.load_model(self.options["model"], self.device, compute_type=self.options['compute_type'],
                                         language=self.options['language'], vad_options={'vad_onset': self.options['vad_onset'], 'vad_offset': self.options['vad_offset']})
         except ValueError:
-            print(f'Your hardware does not support {self.options["compute_type"]} - fallback to float32')
+            print(f'Your device {self.device} does not support {self.options["compute_type"]} - fallback to float32')
             sys.stdout.flush()
             model = whisperx.load_model(self.options["model"], self.device, compute_type='float32',
                                         language=self.options['language'], vad_options={'vad_onset': self.options['vad_onset'], 'vad_offset': self.options['vad_offset']})
