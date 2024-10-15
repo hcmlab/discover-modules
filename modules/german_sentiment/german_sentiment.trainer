@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta  backend="nova-server" frameStep="500ms" leftContext="4500ms" rightContext="0ms" category="Functional,Emotion" description="Extracts the text-based sentiment using model germansentiment" is_iterable="True">
+    <io type="input" id="transcript" data="annotation:Free" default_value="transcript" />
+    <io type="output" id="sentiment" data="annotation:Continuous" default_value="sentiment" />
+</meta>
+<model create="GermanSentiment" script="german_sentiment.py" optstr=""/>
+</trainer>
