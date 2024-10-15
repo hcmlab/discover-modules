@@ -25,6 +25,7 @@ _default_options = {"model": "tiny", "alignment_mode": "segment", "batch_size": 
 class WhisperX(Processor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.options = _default_options | self.options
         
         # string treatment for number extraction
         try:
