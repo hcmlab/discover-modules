@@ -1,4 +1,4 @@
-""" Driver Emotion
+""" German Sentiment
 
 Author:
     Dominik Schiller <dominik.schiller@uni-a.de>

@@ -1,8 +1,8 @@
 ﻿import numpy as np
 import os
-from nova_utils.interfaces.server_module import Processor
+from discover_utils.interfaces.server_module import Processor
 from germansentiment import SentimentModel
-from nova_utils.utils.anno_utils import resample
+from discover_utils.utils.anno_utils import resample
 
 #TODO Seems to be not working at the moment
 os.environ["PYTORCH_PRETRAINED_BERT_CACHE"] = os.getenv('CACHE_DIR', 'cache')
@@ -76,10 +76,10 @@ class GermanSentiment(Processor):
 if __name__ == '__main__':
     import dotenv
     import os
-    from nova_utils.utils.ssi_xml_utils import Trainer
+    from discover_utils.utils.ssi_xml_utils import Trainer
     from pathlib import Path
-    from nova_utils.data.provider.dataset_iterator import DatasetIterator
-    from nova_utils.data.provider.data_manager import NovaDatasetManager
+    from discover_utils.data.provider.dataset_iterator import DatasetIterator
+    from discover_utils.data.provider.data_manager import NovaDatasetManager
 
     env = dotenv.load_dotenv(r'../.env')
     IP = os.getenv("NOVA_IP", "")
