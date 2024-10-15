@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true"/>
+<meta backend="nova-server" frameStep="40ms" leftContext="960ms" rightContext="0" category="Feature " description="Calculates a predefined set of handcrafted features from an audio signal" is_iterable="True">
+    <io type="input" id="input_audio" data="stream:Audio" default_value="audio" />
+    <io type="output" id="output_stream" data="stream:SSIStream:feature" default_value="opensmile" />
+</meta>
+<model create="OpenSmile" script="opensmile_extractor.py" optstr="{feature_set:LIST:eGeMAPSv02,GeMAPS,ComParE_2016,emobase};{feature_lvl:LIST:Functionals,LowLevelDescriptors,LowLevelDescriptors_Deltas}"/>
+</trainer>
