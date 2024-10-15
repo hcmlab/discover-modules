@@ -41,7 +41,7 @@ payload = {
     {"src":"file:stream:audio", "type":"input", "id":"audio", "uri":"path/to/my/file.wav"},
     {"src":"file:annotation:free", "type":"output", "id":"transcript",  "uri":"path/to/my/transcript.annotation"}
   ]),
-  "trainerFilePath": "modules\\whisperx\\whisperx_transcript.trainer",
+  "trainerFilePath": "modules\\whisperx\\whisperx.trainer",
 }
 
 
