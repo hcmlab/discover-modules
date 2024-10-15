@@ -5,5 +5,5 @@
     <io type="input" id="input_audio" data="stream:Audio" default_value="audio" />
     <io type="output" id="output_stream" data="stream:SSIStream:feature" default_value="opensmile" />
 </meta>
-<model create="OpenSmile" script="opensmile_extractor.py" optstr="{feature_set:LIST:eGeMAPSv02,GeMAPS,ComParE_2016,emobase};{feature_lvl:LIST:Functionals,LowLevelDescriptors,LowLevelDescriptors_Deltas}"/>
+<model create="OpenSmile" script="opensmile.py" optstr="{feature_set:LIST:eGeMAPSv02,GeMAPS,ComParE_2016,emobase};{feature_lvl:LIST:Functionals,LowLevelDescriptors,LowLevelDescriptors_Deltas}"/>
 </trainer>

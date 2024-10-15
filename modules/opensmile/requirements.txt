@@ -1,3 +1,2 @@
-numpy<2
-hcai-nova-utils
+hcai-discover-utils
 opensmile

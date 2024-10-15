@@ -31,7 +31,7 @@ import requests
 import json
 
 payload = {
-  "jobID" : "opensmile_gemeaps",
+  "jobID" : "opensmile_gemaps",
   "data": json.dumps([
     {"src":"file:stream:audio", "type":"input", "id":"input", "uri":"path/to/my/audio.wav"},
     {"src":"file:stream:SSIStream:feature", "type":"output", "id":"output",  "uri":"path/to/my/gemaps_features.stream"}
