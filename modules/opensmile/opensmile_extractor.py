@@ -2,9 +2,9 @@ import numpy as np
 import opensmile
 import pandas as pd
 from time import perf_counter
-from nova_utils.interfaces.server_module import Processor
-from nova_utils.data.stream import SSIStream
-from nova_utils.utils.log_utils import log
+from discover_utils.interfaces.server_module import Processor
+from discover_utils.data.stream import SSIStream
+from discover_utils.utils.log_utils import log
 
 INPUT_ID = "input_audio"
 OUTPUT_ID = "output_stream"
@@ -96,8 +96,8 @@ if __name__ == "__main__":
     from pathlib import Path
 
     PYTORCH_ENABLE_MPS_FALLBACK = 1
-    from nova_utils.utils.ssi_xml_utils import Trainer
-    from nova_utils.data.provider.dataset_iterator import DatasetIterator
+    from discover_utils.utils.ssi_xml_utils import Trainer
+    from discover_utils.data.provider.dataset_iterator import DatasetIterator
     import dotenv
 
     env = dotenv.load_dotenv(r"../.env")
