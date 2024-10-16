@@ -9,6 +9,7 @@ os.environ["PYTORCH_PRETRAINED_BERT_CACHE"] = os.getenv('CACHE_DIR', 'cache')
 os.environ["PYTORCH_TRANSFORMERS_CACHE"] = os.getenv('CACHE_DIR', 'cache')
 os.environ["HUGGINGFACE_HUB_CACHE"] = os.getenv('CACHE_DIR', 'cache')
 os.environ["HF_MODULES_CACHE"] = os.getenv('CACHE_DIR', 'cache')
+os.environ['PYTORCH_CUDA_ALLOC_CONF']='expandable_segments:True'
 
 _default_options = {}
 _dim_labels = [
@@ -51,17 +52,16 @@ class GermanSentiment(Processor):
 
         # Concatenating all labels to one string per window
         sample_data = [" ".join(window["transcript"]) for window in list(ds_iter)]
-
-        # Predicting all windows
-        _, preds = self.model.predict_sentiment(sample_data, output_probabilities=True)
-
+        
+        # Build cache to avoid OOM
+        _, cache = self.model.predict_sentiment(unique := set(sample_data), output_probabilities=True)
         # Calculating sentiment from pos / neg / neutral: 1*pos - 1*neg + 0*neutr
-        expect = [x[0][1] - x[1][1] for x in preds]
-
-        # Set empty string predictions zu 0
-        expect_clean = np.asarray([e if s else 0.0 for e,s in zip(expect, sample_data)])
-
-        return expect_clean
+        cache_map = {x: y[0][1] - y[1][1] for x, y in zip(unique, cache)}
+        # Set empty string predictions to 0
+        cache_map[''] = 0.0
+        
+        preds = np.array([cache_map[x] for x in sample_data])
+        return preds
 
     def to_output(self, data) -> dict:
         # Append necessary meta information
