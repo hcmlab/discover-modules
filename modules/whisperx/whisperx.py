@@ -140,10 +140,13 @@ class WhisperX(Processor):
                 (w["start"], w["end"], w["word"], w["score"])
                 for w in data["word_segments"]
             ]
+        elif self.options["alignment_mode"] == "segment":
+            anno_data = [
+                (w["start"], w["end"], w["text"], _hmean([x['score'] for x in w['words']])) for w in data["segments"]
+            ]
         else:
             anno_data = [
-                #(w["start"], w["end"], w["text"], _hmean([x['score'] for x in w['words']])) for w in data["segments"]
-                (w["start"], w["end"], w["text"], 1) for w in data["segments"]  # alignment 'raw' no longer contains a score(?)
+                (w["start"], w["end"], w["text"], 0) for w in data["segments"]  # alignment 'raw' no longer contains a score(?)
             ]
 
         # convert to milliseconds
