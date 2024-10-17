@@ -1,3 +1,4 @@
 hcai-discover-utils
+pandas
 finch-clust
 pynndescent
