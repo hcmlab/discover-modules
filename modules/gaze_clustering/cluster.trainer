@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+    <info trained="true" seed="1234"/>
+	<meta backend="nova-server" category="Gaze" description="Clusters gaze directions into main direction and other" is_iterable="False">
+        <io type="input" id="openface" data="stream:Feature" default_value="openface"/>
+	    <io type="output" id="gaze" data="annotation:Discrete" default_value="gaze"/>
+	</meta>
+    <model create="Cluster" script="cluster.py" optstr="{metric:LIST:l2,l1,cosine};{window:STRING:10};{cluster:STRING:10};{threshold:STRING:0.7};{greedy:LIST:distance,mass}"/>
+</trainer>
