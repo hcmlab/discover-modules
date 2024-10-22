@@ -5,5 +5,5 @@
         <io type="input" id="openface" data="stream:SSIStream:openface2[0,1,0];feature;face" default_value="face.openface2[0,1,0]"/>
 	    <io type="output" id="gaze" data="annotation:Discrete" default_value="gaze"/>
 	</meta>
-    <model create="GazeCluster" script="gaze_clustering.py" optstr="{metric:LIST:l2,l1,cosine};{window:STRING:10};{cluster:STRING:10};{threshold:STRING:0.7};{greedy:LIST:distance,mass}"/>
+    <model create="GazeCluster" script="gaze_clustering.py" optstr="{metric:LIST:l1,l2,cosine};{window:STRING:300};{cluster:STRING:20};{threshold:STRING:0.7};{greedy:LIST:distance,mass}"/>
 </trainer>

@@ -15,9 +15,8 @@ INPUT_ID = "openface"
 OUTPUT_ID = "gaze"
 
 # Setting defaults
-_default_options = {"metric": "l1", 'window': 9, 'cluster': 20, 'threshold': 0.7, 'greedy': 'distance'}
+_default_options = {"metric": "l1", 'window': 300, 'cluster': 20, 'threshold': 0.7, 'greedy': 'distance'}
 
-# TODO: allow for window to enter seconds and translate into frames
 # TODO: compute confidence by measuring distance to cluster centroids
 class GazeCluster(Processor):
     def __init__(self, *args, **kwargs):
@@ -62,6 +61,7 @@ class GazeCluster(Processor):
 
     def process_data(self, ds_manager) -> dict:
         self.session_manager = self.get_session_manager(ds_manager)
+        self.options['window'] = round(self.options['window'] / 1000.0 * self.session_manager.input_data[INPUT_ID].meta_data.sample_rate)
 
         # openface2 dimensions gaze angle x and y : 634, 635
         data = self.session_manager.input_data[INPUT_ID].data[:, 634:636]
