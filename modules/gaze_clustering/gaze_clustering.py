@@ -61,12 +61,12 @@ class GazeCluster(Processor):
 
     def process_data(self, ds_manager) -> dict:
         self.session_manager = self.get_session_manager(ds_manager)
-        self.options['window'] = round(self.options['window'] / 1000.0 * self.session_manager.input_data[INPUT_ID].meta_data.sample_rate)
+        window_frames = round(self.options['window'] / 1000.0 * self.session_manager.input_data[INPUT_ID].meta_data.sample_rate)
 
         # openface2 dimensions gaze angle x and y : 634, 635
         data = self.session_manager.input_data[INPUT_ID].data[:, 634:636]
         df = pd.DataFrame(data)
-        df = df.rolling(int(self.options['window']), min_periods=1).median()
+        df = df.rolling(window_frames, min_periods=1).median()
         c, n, p = FINCH(df, req_clust=int(self.options['cluster']), distance=self.options['metric'], verbose=False)
         df['label'] = p
 
