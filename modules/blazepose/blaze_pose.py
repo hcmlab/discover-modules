@@ -7,8 +7,10 @@ Date: 30.10.2024
 
 import sys
 import os
+import cv2
 
 import discover_utils.data.stream
+from mediapipe.tasks.python.components.containers import NormalizedLandmark
 
 # Add local dir to path for relative imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -87,12 +89,12 @@ class BlazePose(Processor):
             cache_dir=os.getenv("CACHE_DIR"),
             tmp_dir=os.getenv("TMP_DIR"),
         )
-        base_options = python.BaseOptions(model_asset_path=task)
+        base_options = python.BaseOptions(model_asset_path=task, delegate=python.BaseOptions.Delegate.GPU)
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
-            output_segmentation_masks=True)
+            output_segmentation_masks=True
+        )
         self.detector = vision.PoseLandmarker.create_from_options(options)
-
 
         # # Optionally change the thresholds:
         # self.model.min_score_thresh = float(self.options["min_score_thresh"])
@@ -108,6 +110,14 @@ class BlazePose(Processor):
 
     def _post_process_sample(self, x):
         return x
+        # Convert to numpy and remove z axis, presence and visability
+        out = []
+        for frame in x:
+            frame_np = []
+            for landmark in frame:
+                frame_np.extend([landmark.y, landmark.x])
+
+
         # # Move to cpu
         # x = x.cpu().numpy()
         #
@@ -196,27 +206,34 @@ class BlazePose(Processor):
                 continue
 
             frame = np.asarray(data[idxs])
-            # TODO: Add batche support
+            # TODO: Add batch support
             frame = frame[0]
-            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+            #image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+            image = mp.Image(image_format=mp.ImageFormat.SRGBA, data=cv2.cvtColor(frame, cv2.COLOR_RGB2RGBA))
+            #detections = self.detector.detect(int((idx_start + 1) * 1000 / data_object.meta_data.sample_rate), image)
             detections = self.detector.detect(image)
-            predictions.append(detections)
+            predictions.append(detections.pose_landmarks)
 
-        # Removing additional faces and adjust aspect ratio
+
+        # if self.repeat_last:
+        #     # Init pose box with 33 empty landmarks
+        #     last_p = [NormalizedLandmark()] * 33
+        #     for i in predictions:
+        #         if True:
+        #             ...
+
+            #last_p[:, 2:4] = 1
+            # for i, p in enumerate(predictions):
+            #     if p[-1] == 0:
+            #         predictions[i] = last_p
+            #         predictions[i][-1] = 0
+            #     else:
+            #         last_p = p
+
+        # Adjust format
         #predictions = np.concatenate(
         #    [self._post_process_sample(x) for x in predictions]
         #)
-
-        # if self.repeat_last:
-        #     # Init bounding box with full image
-        #     last_p = np.zeros((self.num_poses, 17))
-        #     last_p[:, 2:4] = 1
-        #     for i, p in enumerate(predictions):
-        #         if p[-1] == 0:
-        #             predictions[i] = last_p
-        #             predictions[i][-1] = 0
-        #         else:
-        #             last_p = p
 
         # Landmarks flip x,y order to y,x order
         #lm = predictions[:, 4:]
@@ -264,7 +281,7 @@ if __name__ == "__main__":
 
 
     def draw_landmarks_on_image(rgb_image, detection_result):
-        pose_landmarks_list = detection_result.pose_landmarks
+        pose_landmarks_list = detection_result
         annotated_image = np.copy(rgb_image)
 
         # Loop through the detected poses to visualize.
@@ -286,8 +303,10 @@ if __name__ == "__main__":
     dotenv.load_dotenv()
     base_dir = Path(os.getenv("DISCOVER_DATA_DIR"))
     out_dir = Path(os.getenv("DISCOVER_TEST_DIR"))
-    img_in = Path(base_dir / "test_files" / "test_pose.jpg")
     stream_out = Path(out_dir /"blaze_pose_out.stream")
+
+    image = True
+    video = False
 
     bp_trainer = Trainer()
     bp_trainer.load_from_file("blazepose.trainer")
@@ -297,77 +316,93 @@ if __name__ == "__main__":
         opts={},
     )
 
-    dd_input_image = {
-        "src": "file:image",
-        "type": "input",
-        "id": INPUT_ID,
-        "uri": str(img_in),
-    }
+    if image:
+        img_in = Path(base_dir / "test_files" / "test_pose.jpg")
 
-    dd_output = {
-        "src": "file:stream",
-        "type": "output",
-        "id": OUTPUT_ID,
-        "uri": str(stream_out),
-    }
+        dd_input_image = {
+            "src": "file:image",
+            "type": "input",
+            "id": INPUT_ID,
+            "uri": str(img_in),
+        }
 
-    # Create dataset from image
-    dm_image = DatasetManager([dd_input_image, dd_output])
-    dm_image.load()
+        dd_output = {
+            "src": "file:stream",
+            "type": "output",
+            "id": OUTPUT_ID,
+            "uri": str(stream_out),
+        }
 
-    # Predict
-    detection_result = bp.process_data(dm_image)
+        # Create dataset from image
+        dm_image = DatasetManager([dd_input_image, dd_output])
+        dm_image.load()
 
-
-    # Get original input image for plotting
-    input_image = bp.get_session_manager(dm_image).input_data[INPUT_ID].data
-    annotated_image = draw_landmarks_on_image(input_image, detection_result[0])
+        # Predict
+        detection_result = bp.process_data(dm_image)
 
 
-    plt.imshow(annotated_image)
-    plt.show()
-    exit()
+        # Get original input image for plotting
+        input_image = bp.get_session_manager(dm_image).input_data[INPUT_ID].data
+        annotated_image = draw_landmarks_on_image(input_image, detection_result[0])
 
-    # Save to Disk
-    # for k, v in bf.to_output(output).items():
-    #     sm_image.output_data_templates[k] = v
-    # sm_image.save()
 
-    ####
-    # VIDEO
-    #####
+        plt.imshow(annotated_image)
+        plt.show()
+        exit()
 
-    # video = True
-    # if video:
-    #     dd_input_video = {
-    #         "src": "file:stream",
-    #         "type": "input",
-    #         "id": INPUT_ID,
-    #         "uri": "/Users/dominikschiller/Work/local_nova_dir/test_files/test_video.mp4",
-    #     }
-    #
-    #     dd_output_bb = {
-    #         "src": "file:stream",
-    #         "type": "output",
-    #         "id": OUTPUT_ID_BB,
-    #         "uri": "/Users/dominikschiller/Work/local_nova_dir/test_files/blazeface_bb_test_video.stream",
-    #     }
-    #
-    #     dd_output_lm = {
-    #         "src": "file:stream",
-    #         "type": "output",
-    #         "id": OUTPUT_ID_LM,
-    #         "uri": "/Users/dominikschiller/Work/local_nova_dir/test_files/blazeface_lm_test_video.stream",
-    #     }
-    #
-    #     dm_video = DatasetManager([dd_input_video, dd_output_bb, dd_output_lm])
-    #     sm_video = bf.get_session_manager(dm_video)
-    #     dm_video.load()
-    #     output = bf.process_data(dm_video)
-    #     video = sm_video.input_data[INPUT_ID].data
-    #     plot_detections(video[100], output[0][100], output[1][100])
-    #
-    #     for k, v in bf.to_output(output).items():
-    #         sm_video.output_data_templates[k] = v
-    #     sm_video.save()
+        # Save to Disk
+        # for k, v in bf.to_output(output).items():
+        #     sm_image.output_data_templates[k] = v
+        # sm_image.save()
+
+    if video:
+        video_in = Path(base_dir / "test_files" / "test_video.mp4")
+
+        dd_input_video = {
+            "src": "file:stream:video",
+            "type": "input",
+            "id": INPUT_ID,
+            "uri": str(video_in),
+        }
+
+        dd_output = {
+            "src": "file:stream",
+            "type": "output",
+            "id": OUTPUT_ID,
+            "uri": str(stream_out),
+        }
+
+        # Create dataset from image
+        dm_video = DatasetManager([dd_input_video, dd_output])
+        dm_video.load()
+
+        # Predict
+        detection_result = bp.process_data(dm_video)
+
+
+        # Get original input image for plotting
+        input_ = bp.get_session_manager(dm_video).input_data[INPUT_ID].data
+
+        for i in range(0,30,10):
+            draw_landmarks_on_image(input_[i], detection_result[0])
+
+
+
+
+        plt.imshow(annotated_image)
+        plt.show()
+        exit()
+
+
+
+        dm_video = DatasetManager([dd_input_video, dd_output_bb, dd_output_lm])
+        sm_video = bf.get_session_manager(dm_video)
+        dm_video.load()
+        output = bf.process_data(dm_video)
+        video = sm_video.input_data[INPUT_ID].data
+        plot_detections(video[100], output[0][100], output[1][100])
+
+        for k, v in bf.to_output(output).items():
+            sm_video.output_data_templates[k] = v
+        sm_video.save()
 
