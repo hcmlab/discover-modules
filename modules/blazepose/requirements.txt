@@ -1,4 +1,2 @@
 hcai-discover-utils
-torch
-torchaudio
-torchvision
+mediapipe

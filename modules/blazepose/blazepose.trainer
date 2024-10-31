@@ -1,14 +1,10 @@
 <?xml version="1.0" ?>
 <trainer ssi-v="5">
 <info trained="true" seed="1234"/>
-<meta backend="nova-server" category="Face" description="Calculates the bounding box around a single face in a video stream." is_iterable="False">
+<meta backend="nova-server" category="Body" description="Calculates the pose of a single person in the stream" is_iterable="False">
     <io type="input" id="video" data="stream:Video" default_value="video" />
-    <io type="output" id="bounding_box" data="stream:SSIStream:feature;face;boundingbox;blazeface" default_value="face_bounding_box"/>
-    <io type="output" id="landmarks" data="stream:SSIStream:feature;face;landmarks;blazeface" default_value="facial_landmarks" />
-    <uri id="front_weights" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Fblazeface&amp;files=blazeface.pth" hash="54ecff653feaaaf1f7d44b6aff28fd2fc50e483a4e847563b6dd261369c43ba4" tar="False" />
-    <uri id="front_anchors" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Fblazeface&amp;files=anchors.npy" hash="a10bb2fb93ab54ca426d6c750bfc3aad685028a16dcf231357d03694f261fd95" tar="False" />
-    <uri id="back_weights" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Fblazeface&amp;files=blazefaceback.pth" hash="e2c03bb3ae45e769eaaa0a7cc7d4f61f54a5e3fbae6367d870166702e7022b11" tar="False" />
-    <uri id="back_anchors" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Fblazeface&amp;files=anchorsback.npy" hash="a10bb2fb93ab54ca426d6c750bfc3aad685028a16dcf231357d03694f261fd95" tar="False" />
+    <io type="output" id="pose" data="stream:SSIStream:feature;body;pose;blazepose" default_value="pose"/>
+    <uri id="task_file" url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task" hash="" tar="False" />
 </meta>
-<model create="BlazeFace" script="blaze_face.py" optstr="{model:LIST:back,front};{min_suppression_thresh:STRING:0.3};{min_score_thresh:STRING:0.5};{batch_size:STRING:250};{force_square_ar:BOOL:True};{repeat_last:BOOL:True}"/>
+<model create="BlazePose" script="blaze_pose.py" optstr=""/>
 </trainer>
