@@ -8,7 +8,7 @@ Date: 30.10.2024
 import sys
 import os
 import cv2
-
+import time
 import discover_utils.data.stream
 from mediapipe.tasks.python.components.containers import NormalizedLandmark
 
@@ -89,10 +89,11 @@ class BlazePose(Processor):
             cache_dir=os.getenv("CACHE_DIR"),
             tmp_dir=os.getenv("TMP_DIR"),
         )
-        base_options = python.BaseOptions(model_asset_path=task, delegate=python.BaseOptions.Delegate.GPU)
+        base_options = python.BaseOptions(model_asset_path=task, delegate=python.BaseOptions.Delegate.CPU)
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
-            output_segmentation_masks=True
+            output_segmentation_masks=False,
+            running_mode=mp.tasks.vision.RunningMode.VIDEO
         )
         self.detector = vision.PoseLandmarker.create_from_options(options)
 
@@ -193,6 +194,7 @@ class BlazePose(Processor):
 
         predictions = []
         # self.orig_height, self.orig_width, self.channels = data.shape[1:]
+        start = time.perf_counter()
         for i in range(0, len(data), self.batch_size):
             idx_start = i
             idx_end = (
@@ -201,7 +203,9 @@ class BlazePose(Processor):
                 else len(data)
             )
             idxs = list(range(idx_start, idx_end))
-            log(f"Batch {i / self.batch_size} : {idx_start} - {idx_end}")
+            if idx_start % 100 == 0 and idx_start > 0:
+                log(f"Processed: {idx_start} frames / {(idx_start + 1) / (time.perf_counter() - start) } FPS ")
+            #log(f"Batch {i / self.batch_size} : {idx_start} - {idx_end}")
             if not idxs:
                 continue
 
@@ -209,10 +213,14 @@ class BlazePose(Processor):
             # TODO: Add batch support
             frame = frame[0]
             #image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-            image = mp.Image(image_format=mp.ImageFormat.SRGBA, data=cv2.cvtColor(frame, cv2.COLOR_RGB2RGBA))
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)#data=cv2.cvtColor(frame, cv2.COLOR_RGB2RGB))
             #detections = self.detector.detect(int((idx_start + 1) * 1000 / data_object.meta_data.sample_rate), image)
-            detections = self.detector.detect(image)
+            detections = self.detector.detect_for_video(image, int((idx_start) * 1000 / data_object.meta_data.sample_rate))
             predictions.append(detections.pose_landmarks)
+
+            ### TODO: DEBUG ONLY ###
+            if idx_end >= 500:
+                break
 
 
         # if self.repeat_last:
@@ -305,8 +313,8 @@ if __name__ == "__main__":
     out_dir = Path(os.getenv("DISCOVER_TEST_DIR"))
     stream_out = Path(out_dir /"blaze_pose_out.stream")
 
-    image = True
-    video = False
+    image = False
+    video = True
 
     bp_trainer = Trainer()
     bp_trainer.load_from_file("blazepose.trainer")
@@ -356,7 +364,7 @@ if __name__ == "__main__":
         # sm_image.save()
 
     if video:
-        video_in = Path(base_dir / "test_files" / "test_video.mp4")
+        video_in = Path(base_dir / "test_files" / "patient.video.mp4")
 
         dd_input_video = {
             "src": "file:stream:video",
@@ -383,14 +391,10 @@ if __name__ == "__main__":
         # Get original input image for plotting
         input_ = bp.get_session_manager(dm_video).input_data[INPUT_ID].data
 
-        for i in range(0,30,10):
-            draw_landmarks_on_image(input_[i], detection_result[0])
-
-
-
-
-        plt.imshow(annotated_image)
-        plt.show()
+        for i in range(0,500,30):
+            annotated_image = draw_landmarks_on_image(input_[i], detection_result[i])
+            plt.imshow(annotated_image)
+            plt.show()
         exit()
 
 
