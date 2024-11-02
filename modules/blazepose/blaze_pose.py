@@ -18,6 +18,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import numpy as np
 import mediapipe as mp
+
+from ssi_skeleton import SSISkeleton, get_dim_labels
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.vision import PoseLandmarkerResult
@@ -32,7 +34,8 @@ from discover_utils.data.stream import SSIStream
 INPUT_ID = "video"
 OUTPUT_ID = "pose"
 
-MEDIA_TYPE_ID_BB = "stream:SSIStream:feature;body;pose;blazepose"
+#MEDIA_TYPE_ID_BB = "stream:SSIStream:feature;body;pose;blazepose"
+MEDIA_TYPE_ID_BB = "skeleton"
 
 _default_options = {
     "repeat_last": True,
@@ -40,21 +43,7 @@ _default_options = {
     "model": "full"
 }
 
-# TODO: Fix output labels
-_dl = [
-    "right_eye_y",
-    "right_eye_x",
-    "left_eye_y",
-    "left_eye_x",
-    "nose_y",
-    "nose_x",
-    "mouth_y",
-    "mouth_x",
-    "right_ear_y",
-    "right_ear_x",
-    "left_ear_y",
-    "left_ear_x",
-]
+_dl = get_dim_labels()
 
 _dl = [{"id": i, "name": x} for i, x in enumerate(_dl)]
 
@@ -185,7 +174,7 @@ class BlazePose(Processor):
         #
         # return pred
 
-    def process_data(self, ds_manager) -> tuple:
+    def process_data(self, ds_manager) -> list:
         self.session_manager = self.get_session_manager(ds_manager)
         data_object = self.session_manager.input_data[INPUT_ID]
         data = data_object.data
@@ -277,133 +266,163 @@ class BlazePose(Processor):
         return [x for x, _ in self.detections]
 
     def convert_to_ssi_skeleton(self, frame: PoseLandmarkerResult) -> list:
-
         # Media pipe mapping: https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
-        # 0 - nose
-        # 1 - left eye (inner)
-        # 2 - left eye
-        # 3 - left eye (outer)
-        # 4 - right eye (inner)
-        # 5 - right eye
-        # 6 - right eye (outer)
-        # 7 - left ear
-        # 8 - right ear
-        # 9 - mouth (left)
-        # 10 - mouth (right)
-        # 11 - left shoulder
-        # 12 - right shoulder
-        # 13 - left elbow
-        # 14 - right elbow
-        # 15 - left wrist
-        # 16 - right wrist
-        # 17 - left pinky
-        # 18 - right pinky
-        # 19 - left index
-        # 20 - right index
-        # 21 - left thumb
-        # 22 - right thumb
-        # 23 - left hip
-        # 24 - right hip
-        # 25 - left knee
-        # 26 - right knee
-        # 27 - left ankle
-        # 28 - right ankle
-        # 29 - left heel
-        # 30 - right heel
-        # 31 - left foot index
-        # 32 - right foot index
+        # SSI Mapping: https://hcai.eu/svn/Johannes/openssi/trunk/core/include/SSI_SkeletonCons.h
 
 
-        # SSI Mapping: https://hcai.eu/svn/Johannes/openssi/trunk/plugins/microsoftkinect/include/MicrosoftKinect.h
-        # 0 = HIP_CENTER
-        # 1 = SPINE,
-        # 2= SHOULDER_CENTER,
-        # 3 = HEAD,
-        # 4 = SHOULDER_LEFT,
-        # 5 = ELBOW_LEFT,
-        # 6 = WRIST_LEFT,
-        # 7 = HAND_LEFT,
-        # 8 = SHOULDER_RIGHT,
-        # 9 = ELBOW_RIGHT,
-        # 10 = WRIST_RIGHT,
-        # 11 = HAND_RIGHT,
-        # 12 = HIP_LEFT,
-        # 13 = KNEE_LEFT,
-        # 14 = ANKLE_LEFT,
-        # 15 = FOOT_LEFT,
-        # 16 = HIP_RIGHT,
-        # 17 = KNEE_RIGHT,
-        # 18 = ANKLE_RIGHT,
-        # 19 = FOOT_RIGHT,
-
-        for i, pose_landmark in enumerate(PoseLandmarkerResult.pose_landmarks):
-            # HIP_CENTER
-            hip_center_x = (pose_landmark[23].x + pose_landmark[24].x) / 2
-            hip_center_y = (pose_landmark[23].y + pose_landmark[24].y) / 2
-            hip_center_z = (pose_landmark[23].z + pose_landmark[24].z) / 2
-
-            # SHOULDER_CENTER
-            shoulder_center_x = (pose_landmark[23].x + pose_landmark[24].x) / 2
-            shoulder_center_y =(pose_landmark[23].y + pose_landmark[24].y) / 2
-            shoulder_center_z = (pose_landmark[23].z + pose_landmark[24].z) / 2
-
-            # SPINE
-            SPINE =  hip_center_x +
+        def unpack_landmarks(pl: NormalizedLandmark):
+            return pl.x, pl.y, pl.z, pl.visibility, pl.presence
 
 
-            # 2= SHOULDER_CENTER,
-            # 3 = HEAD,
-            # 4 = SHOULDER_LEFT,
-            # 5 = ELBOW_LEFT,
-            # 6 = WRIST_LEFT,
-            # 7 = HAND_LEFT,
-            # 8 = SHOULDER_RIGHT,
-            # 9 = ELBOW_RIGHT,
-            # 10 = WRIST_RIGHT,
-            # 11 = HAND_RIGHT,
-            # 12 = HIP_LEFT,
-            # 13 = KNEE_LEFT,
-            # 14 = ANKLE_LEFT,
-            # 15 = FOOT_LEFT,
-            # 16 = HIP_RIGHT,
-            # 17 = KNEE_RIGHT,
-            # 18 = ANKLE_RIGHT,
-            # 19 = FOOT_RIGHT,
+        def normalize_landmarks(x,y,z,visibility,presence):
+            return (x*2)-1, (y*2)-1, (z*2)-1, visibility, presence
 
 
 
+        def average_landmarks(landmarks: list[NormalizedLandmark]):
+            x, y, z, visibility, presence = 0, 0, 0, 0, 0
+            for l in landmarks:
+                x += l.x
+                y += l.y
+                z += l.z
+                visibility += l.visibility
+                presence += l.presence
 
-        def to_output(self, data: tuple) -> dict:
-            ...
+            x = x / len(landmarks)
+            y = y / len(landmarks)
+            z = z / len(landmarks)
+            visibility = visibility / len(landmarks)
+            presence = presence / len(landmarks)
+
+            return x, y, z, visibility, presence
+
+        # Assign to SSISkeleton and calculate missing values
+        # Skeletons
+        skeletons = []
+        for person_id, pose_landmark_list in enumerate(frame.pose_landmarks):
+            ssi_skel = SSISkeleton()
+            # 0 - HEAD
+            ssi_skel.HEAD.POS_X, ssi_skel.HEAD.POS_Y, ssi_skel.HEAD.POS_Z, _, ssi_skel.HEAD.POS_CONF = normalize_landmarks( *unpack_landmarks(pose_landmark_list[0]) )
+
+            # 1 - NECK
+            ssi_skel.NECK.POS_X, ssi_skel.NECK.POS_Y, ssi_skel.NECK.POS_Z, _, ssi_skel.NECK.POS_CONF  = normalize_landmarks( *average_landmarks([pose_landmark_list[11], pose_landmark_list[12]]) )
+
+            # 2 - TORSO
+            ssi_skel.TORSO.POS_X, ssi_skel.TORSO.POS_Y, ssi_skel.TORSO.POS_Z, _, ssi_skel.TORSO.POS_CONF  = normalize_landmarks( *average_landmarks([pose_landmark_list[23], pose_landmark_list[24], pose_landmark_list[11], pose_landmark_list[12]]) )
+
+            # 3 - WAIST
+            ssi_skel.WAIST.POS_X, ssi_skel.WAIST.POS_Y, ssi_skel.WAIST.POS_Z, _, ssi_skel.WAIST.POS_CONF  = normalize_landmarks( *average_landmarks([pose_landmark_list[23], pose_landmark_list[24]]) )
+
+            # 4 - LEFT_SHOULDER
+            ssi_skel.LEFT_SHOULDER.POS_X, ssi_skel.LEFT_SHOULDER.POS_Y, ssi_skel.LEFT_SHOULDER.POS_Z, _, ssi_skel.LEFT_SHOULDER.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[11]))
+
+            # 5 - LEFT_ELBOW
+            ssi_skel.LEFT_ELBOW.POS_X, ssi_skel.LEFT_ELBOW.POS_Y, ssi_skel.LEFT_ELBOW.POS_Z, _, ssi_skel.LEFT_ELBOW.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[13]))
+
+            # 6 - LEFT_WRIST
+            ssi_skel.LEFT_WRIST.POS_X, ssi_skel.LEFT_WRIST.POS_Y, ssi_skel.LEFT_WRIST.POS_Z, _, ssi_skel.LEFT_WRIST.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[15]))
+
+            # 7 - LEFT_HAND
+            ssi_skel.LEFT_HAND.POS_X, ssi_skel.LEFT_HAND.POS_Y, ssi_skel.LEFT_HAND.POS_Z, _, ssi_skel.LEFT_HAND.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[19]))
+
+            # 8 - RIGHT_SHOULDER
+            ssi_skel.RIGHT_SHOULDER.POS_X, ssi_skel.RIGHT_SHOULDER.POS_Y, ssi_skel.RIGHT_SHOULDER.POS_Z, _, ssi_skel.RIGHT_SHOULDER.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[12]))
+
+            # 9 - RIGHT_ELBOW
+            ssi_skel.RIGHT_ELBOW.POS_X, ssi_skel.RIGHT_ELBOW.POS_Y, ssi_skel.RIGHT_ELBOW.POS_Z, _, ssi_skel.RIGHT_ELBOW.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[14]))
+
+            # 10 - RIGHT_WRIST
+            ssi_skel.RIGHT_WRIST.POS_X, ssi_skel.RIGHT_WRIST.POS_Y, ssi_skel.RIGHT_WRIST.POS_Z, _, ssi_skel.RIGHT_WRIST.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[16]))
+
+            # 11 - RIGHT_HAND
+            ssi_skel.RIGHT_HAND.POS_X, ssi_skel.RIGHT_HAND.POS_Y, ssi_skel.RIGHT_HAND.POS_Z, _, ssi_skel.RIGHT_HAND.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[20]))
+
+            # 12 - LEFT_HIP
+            ssi_skel.LEFT_HIP.POS_X, ssi_skel.LEFT_HIP.POS_Y, ssi_skel.LEFT_HIP.POS_Z, _, ssi_skel.LEFT_HIP.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[23]))
+
+            # 13 - LEFT_KNEE
+            ssi_skel.LEFT_KNEE.POS_X, ssi_skel.LEFT_KNEE.POS_Y, ssi_skel.LEFT_KNEE.POS_Z, _, ssi_skel.LEFT_KNEE.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[25]))
+
+            # 14 - LEFT_ANKLE
+            ssi_skel.LEFT_ANKLE.POS_X, ssi_skel.LEFT_ANKLE.POS_Y, ssi_skel.LEFT_ANKLE.POS_Z, _, ssi_skel.LEFT_ANKLE.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[27]))
+
+            # 15 - LEFT_FOOT
+            ssi_skel.LEFT_FOOT.POS_X, ssi_skel.LEFT_FOOT.POS_Y, ssi_skel.LEFT_FOOT.POS_Z, _, ssi_skel.LEFT_FOOT.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[31]))
+
+            # 16 - RIGHT_HIP
+            ssi_skel.RIGHT_HIP.POS_X, ssi_skel.RIGHT_HIP.POS_Y, ssi_skel.RIGHT_HIP.POS_Z, _, ssi_skel.RIGHT_HIP.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[24]))
+
+            # 17 - RIGHT_KNEE
+            ssi_skel.RIGHT_KNEE.POS_X, ssi_skel.RIGHT_KNEE.POS_Y, ssi_skel.RIGHT_KNEE.POS_Z, _, ssi_skel.RIGHT_KNEE.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[26]))
+
+            # 18 - RIGHT_ANKLE
+            ssi_skel.RIGHT_ANKLE.POS_X, ssi_skel.RIGHT_ANKLE.POS_Y, ssi_skel.RIGHT_ANKLE.POS_Z, _, ssi_skel.RIGHT_ANKLE.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[28]))
+
+            # 19 - RIGHT_FOOT
+            ssi_skel.RIGHT_FOOT.POS_X, ssi_skel.RIGHT_FOOT.POS_Y, ssi_skel.RIGHT_FOOT.POS_Z, _, ssi_skel.RIGHT_FOOT.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[32]))
+
+            # 20 - FACE_NOSE
+            ssi_skel.FACE_NOSE.POS_X, ssi_skel.FACE_NOSE.POS_Y, ssi_skel.FACE_NOSE.POS_Z, _, ssi_skel.FACE_NOSE.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[0]))
+
+            # 21 - FACE_LEFT_EAR
+            ssi_skel.FACE_LEFT_EAR.POS_X, ssi_skel.FACE_LEFT_EAR.POS_Y, ssi_skel.FACE_LEFT_EAR.POS_Z, _, ssi_skel.FACE_LEFT_EAR.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[7]))
+
+            # 21 - FACE_RIGHT_EAR
+            ssi_skel.FACE_RIGHT_EAR.POS_X, ssi_skel.FACE_RIGHT_EAR.POS_Y, ssi_skel.FACE_RIGHT_EAR.POS_Z, _, ssi_skel.FACE_RIGHT_EAR.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[8]))
+
+            # 22 - FACE_FOREHEAD
+            # ?
+
+            # 23 - FACE_CHIN
+            # ?
+
+            skeletons.append(ssi_skel)
+
+        # Append empty skeleton in case of no detections. Alle values are 0.
+        if not skeletons:
+            skeletons.append(SSISkeleton())
+
+        return skeletons
 
 
+    def to_output(self, data: list) -> dict:
+        ssi_skeleton_stream_data = []
+        for frame in data:
+            ssi_skels = self.convert_to_ssi_skeleton(frame)
+            tmp_skels_ = []
+            for skel in ssi_skels:
+                tmp_skels_.append(skel.to_numpy())
 
-            def create_stream(stream_data, template, input_stream, dim_labels, media_type):
-                return SSIStream(
-                    data=stream_data.astype(template.meta_data.dtype),
-                    sample_rate=1
-                    if isinstance(input_stream, Image)
-                    else input_stream.meta_data.sample_rate,
-                    dim_labels=dim_labels,
-                    media_type=media_type,
-                    custom_meta={
-                        "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}"
-                    },
-                    role=template.meta_data.role,
-                    dataset=template.meta_data.dataset,
-                    name=template.meta_data.name,
-                    session=template.meta_data.session,
-                )
+            ssi_skeleton_stream_data.append(np.hstack(tmp_skels_))
 
-            self.session_manager.output_data_templates[OUTPUT_ID] = create_stream(
-                data[0],
-                self.session_manager.output_data_templates[OUTPUT_ID],
-                self.session_manager.input_data[INPUT_ID],
-                _dl,
-                MEDIA_TYPE_ID_BB,
+
+        def create_stream(stream_data, template, input_stream, dim_labels, media_type):
+            return SSIStream(
+                data=np.asarray(ssi_skeleton_stream_data).astype(template.meta_data.dtype),
+                sample_rate=1
+                if isinstance(input_stream, Image)
+                else input_stream.meta_data.sample_rate,
+                dim_labels=dim_labels,
+                media_type=media_type,
+                custom_meta={
+                    "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}"
+                },
+                role=template.meta_data.role,
+                dataset=template.meta_data.dataset,
+                name=template.meta_data.name,
+                session=template.meta_data.session,
             )
 
-            return self.session_manager.output_data_templates
+
+        self.session_manager.output_data_templates[OUTPUT_ID] = create_stream(
+            data[0],
+            self.session_manager.output_data_templates[OUTPUT_ID],
+            self.session_manager.input_data[INPUT_ID],
+            _dl,
+            MEDIA_TYPE_ID_BB,
+        )
+
+        return self.session_manager.output_data_templates
 
 
 if __name__ == "__main__":
@@ -436,13 +455,26 @@ if __name__ == "__main__":
                 solutions.drawing_styles.get_default_pose_landmarks_style())
         return annotated_image
 
+    def draw_ssi_landmarks_on_image(rgb_image, detection_result):
+        annotated_image = np.copy(rgb_image)
+        # Radius of circle
+        radius = 10
+        # Red color in BGR
+        color = (0, 0, 255)
+        # Line thickness of -1 px
+        thickness = -1
+        for skeleton in detection_result:
+            for name, joint in skeleton.__dict__.items():
+                annotated_image = cv2.circle(annotated_image, (int((joint.POS_X+1)/2*rgb_image.shape[1]), int((joint.POS_Y+1)/2* rgb_image.shape[0])), radius, color, thickness)
+            return annotated_image
+
 
     dotenv.load_dotenv()
     base_dir = Path(os.getenv("DISCOVER_DATA_DIR"))
     out_dir = Path(os.getenv("DISCOVER_TEST_DIR"))
     stream_out = Path(out_dir / "blaze_pose_out.stream")
 
-    running_mode = "live_stream"  # "video", "live_stream", "image"
+    running_mode = "video"  # "video", "live_stream", "image"
 
     bp_trainer = Trainer()
     bp_trainer.load_from_file("blazepose.trainer")
@@ -453,7 +485,7 @@ if __name__ == "__main__":
     )
 
     if running_mode == "image":
-        img_in = Path(base_dir / "test_pose.jpg")
+        img_in = Path(base_dir / "test_files" / "test_pose.jpg")
 
         dd_input_image = {
             "src": "file:image",
@@ -476,9 +508,14 @@ if __name__ == "__main__":
         # Predict
         detection_result = bp.process_data(dm_image)
 
+        # To SSI-Stream
+        detection_results_stream = bp.to_output(detection_result)
+
         # Get original input image for plotting
         input_image = bp.get_session_manager(dm_image).input_data[INPUT_ID].data
-        annotated_image = draw_landmarks_on_image(input_image, detection_result[0])
+
+        #annotated_image = draw_landmarks_on_image(input_image, detection_result[0])
+        annotated_image = draw_ssi_landmarks_on_image(input_image, detection_results_stream[0])
 
         plt.imshow(annotated_image)
         plt.show()
@@ -489,7 +526,7 @@ if __name__ == "__main__":
         # sm_image.save()
 
     if running_mode == "video" or running_mode == "live_stream":
-        video_in = Path(base_dir / "test_pose.mp4")
+        video_in = Path(base_dir / "test_files" / "test_video.mp4")
 
         dd_input_video = {
             "src": "file:stream:video",
@@ -515,18 +552,14 @@ if __name__ == "__main__":
         # Get original input image for plotting
         input_ = bp.get_session_manager(dm_video).input_data[INPUT_ID].data
 
-        for i in range(0, 499, 30):
-            annotated_image = draw_landmarks_on_image(input_[i], detection_result[i])
-            plt.imshow(annotated_image)
-            plt.show()
+        # for i in range(0, 499, 30):
+        #     annotated_image = draw_ssi_landmarks_on_image(input_[i], detection_results_stream[i])
+        #     plt.imshow(annotated_image)
+        #     plt.show()
 
-    # dm_video = DatasetManager([dd_input_video, dd_output_bb, dd_output_lm])
-    # sm_video = bf.get_session_manager(dm_video)
-    # dm_video.load()
-    # output = bf.process_data(dm_video)
-    # video = sm_video.input_data[INPUT_ID].data
-    # plot_detections(video[100], output[0][100], output[1][100])
-    #
-    # for k, v in bf.to_output(output).items():
-    #     sm_video.output_data_templates[k] = v
-    # sm_video.save()
+        # Save output
+        sm_video = bp.get_session_manager(dm_video)
+        for k, v in bp.to_output(detection_result).items():
+            sm_video.output_data_templates[k] = v
+        sm_video.save()
+
