@@ -11,6 +11,7 @@ import cv2
 import time
 import discover_utils.data.stream
 from mediapipe.tasks.python.components.containers import NormalizedLandmark
+from mediapipe.tasks.python.vision import PoseLandmarker
 
 # Add local dir to path for relative imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -19,6 +20,7 @@ import numpy as np
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from mediapipe.tasks.python.vision import PoseLandmarkerResult
 
 from discover_utils.interfaces.server_module import Processor
 from discover_utils.utils.cache_utils import get_file
@@ -33,8 +35,9 @@ OUTPUT_ID = "pose"
 MEDIA_TYPE_ID_BB = "stream:SSIStream:feature;body;pose;blazepose"
 
 _default_options = {
-    "batch_size" : 1,
-    "repeat_last": True
+    "repeat_last": True,
+    "running_mode": "image",
+    "model": "full"
 }
 
 # TODO: Fix output labels
@@ -53,11 +56,18 @@ _dl = [
     "left_ear_x",
 ]
 
-_dl= [{"id": i, "name": x} for i, x in enumerate(_dl)]
+_dl = [{"id": i, "name": x} for i, x in enumerate(_dl)]
 
 
 class BlazePose(Processor):
     chainable = False
+
+    def get_running_mode(self, string):
+        if string == "video":
+            return mp.tasks.vision.RunningMode.VIDEO
+        elif string == "live_stream":
+            return mp.tasks.vision.RunningMode.LIVE_STREAM
+        return mp.tasks.vision.RunningMode.IMAGE
 
     def __init__(self, *args, **kwargs):
         """
@@ -70,16 +80,20 @@ class BlazePose(Processor):
         # Setting options
         super().__init__(*args, **kwargs)
         self.options = _default_options | self.options
-        self.batch_size = int(self.options["batch_size"])
         self.repeat_last = string_to_bool(self.options["repeat_last"])
-        # TODO allow detection of more than one face
         self.num_poses = 1
+        self.running_mode = self.get_running_mode(self.options["running_mode"])
+        self.model = self.options["model"]
+        print(f"Running mode: {self.running_mode}")
 
+        # Only relevant if used in live_stream mode
+        self.detections = []
+
+        def live_callback(result, output_image: mp.Image, timestamp_ms: int):
+            self.detections.append((result, timestamp_ms))
 
         # Download weights and Anchors
-        task_uri = [
-            x for x in self.trainer.meta_uri if x.uri_id == "task_file"
-        ][0]
+        task_uri = next(filter(lambda x: x.uri_id == f"task_file_{self.model}", self.trainer.meta_uri), None)
 
         # Build model
         task = get_file(
@@ -93,21 +107,10 @@ class BlazePose(Processor):
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
             output_segmentation_masks=False,
-            running_mode=mp.tasks.vision.RunningMode.VIDEO
+            running_mode=self.running_mode,
+            result_callback=live_callback if self.running_mode == mp.tasks.vision.RunningMode.LIVE_STREAM else None
         )
         self.detector = vision.PoseLandmarker.create_from_options(options)
-
-        # # Optionally change the thresholds:
-        # self.model.min_score_thresh = float(self.options["min_score_thresh"])
-        # self.model.min_suppression_thresh = float(
-        #     self.options["min_suppression_thresh"]
-        # )
-        # self.batch_size = int(self.options["batch_size"])
-        # self.force_square_ar = string_to_bool(self.options["force_square_ar"])
-        # self.repeat_last = string_to_bool(self.options["repeat_last"])
-        #
-        # # TODO allow detection of more than one face
-        # self.num_faces = 1
 
     def _post_process_sample(self, x):
         return x
@@ -117,7 +120,6 @@ class BlazePose(Processor):
             frame_np = []
             for landmark in frame:
                 frame_np.extend([landmark.y, landmark.x])
-
 
         # # Move to cpu
         # x = x.cpu().numpy()
@@ -192,90 +194,216 @@ class BlazePose(Processor):
         if isinstance(data_object, discover_utils.data.static.Image):
             data = np.expand_dims(data, 0)
 
-        predictions = []
-        # self.orig_height, self.orig_width, self.channels = data.shape[1:]
+        self.detections = []
         start = time.perf_counter()
-        for i in range(0, len(data), self.batch_size):
-            idx_start = i
-            idx_end = (
-                idx_start + self.batch_size
-                if idx_start + self.batch_size <= len(data)
-                else len(data)
-            )
-            idxs = list(range(idx_start, idx_end))
-            if idx_start % 100 == 0 and idx_start > 0:
-                log(f"Processed: {idx_start} frames / {(idx_start + 1) / (time.perf_counter() - start) } FPS ")
-            #log(f"Batch {i / self.batch_size} : {idx_start} - {idx_end}")
-            if not idxs:
-                continue
+        print_interval = 100
+        for i, frame in enumerate(data):
+            if i % print_interval == 0 and i > 0:
+                log(f"Processed: {i} frames / {print_interval / (time.perf_counter() - start)} FPS ")
+                start = time.perf_counter()
 
-            frame = np.asarray(data[idxs])
-            # TODO: Add batch support
-            frame = frame[0]
-            #image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)#data=cv2.cvtColor(frame, cv2.COLOR_RGB2RGB))
-            #detections = self.detector.detect(int((idx_start + 1) * 1000 / data_object.meta_data.sample_rate), image)
-            detections = self.detector.detect_for_video(image, int((idx_start) * 1000 / data_object.meta_data.sample_rate))
-            predictions.append(detections.pose_landmarks)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+            if self.running_mode == mp.tasks.vision.RunningMode.IMAGE:
+                self.detections.append((self.detector.detect(mp_image), 0))
+            else:
+                #time_stamp_ms = int((i) * 1000 / data_object.meta_data.sample_rate)
+                time_stamp_ms = i
+                if self.running_mode == mp.tasks.vision.RunningMode.VIDEO:
+                    self.detections.append((self.detector.detect_for_video(mp_image, time_stamp_ms), time_stamp_ms))
+                if self.running_mode == mp.tasks.vision.RunningMode.LIVE_STREAM:
+                    self.detector.detect_async(mp_image, time_stamp_ms)
 
             ### TODO: DEBUG ONLY ###
-            if idx_end >= 500:
+            if i == 2000:
                 break
 
+        if self.running_mode == mp.tasks.vision.RunningMode.LIVE_STREAM:
+            # Wait for async tasks to finish
+            timeout = 5
+            for t in range(timeout):
+                if len(self.detections) == i+1:
+                    break
+                print(f"Wait for last predictions to finish...")
+                time.sleep(1)
 
-        # if self.repeat_last:
-        #     # Init pose box with 33 empty landmarks
-        #     last_p = [NormalizedLandmark()] * 33
-        #     for i in predictions:
-        #         if True:
-        #             ...
+            # Sort results according to time stamps
+            self.detections.sort(key=lambda tup: tup[1])
 
-            #last_p[:, 2:4] = 1
-            # for i, p in enumerate(predictions):
-            #     if p[-1] == 0:
-            #         predictions[i] = last_p
-            #         predictions[i][-1] = 0
-            #     else:
-            #         last_p = p
+            # Add missing frames
+            frame_idxs = [x[1] for x in self.detections]
+            detections_ = []
+            filler_landmarks = PoseLandmarkerResult([],[])
+            for idx in range(i):
+                if idx not in frame_idxs:
+                    detections_.append(filler_landmarks)
+                else:
+                    detections_.append(self.detections[idx])
+                    if self.repeat_last:
+                        filler_landmarks = self.detections[idx]
+
+            self.detections = detections_
+
+
+            # for idx in range(i):
+            #             if idx >= len(self.detections) or self.detections[idx+1][1] - self.detections[idx][1] != 1:
+            #                 self.detections.insert(idx, (None, None))
+
+
+
+            # if self.repeat_last:
+            #     # Init pose box with 33 empty landmarks
+            #     last_p = [NormalizedLandmark()] * 33
+            #     for i in predictions:
+            #         if True:
+            #             ...
+
+        # last_p[:, 2:4] = 1
+        # for i, p in enumerate(predictions):
+        #     if p[-1] == 0:
+        #         predictions[i] = last_p
+        #         predictions[i][-1] = 0
+        #     else:
+        #         last_p = p
 
         # Adjust format
-        #predictions = np.concatenate(
+        # predictions = np.concatenate(
         #    [self._post_process_sample(x) for x in predictions]
-        #)
+        # )
 
         # Landmarks flip x,y order to y,x order
-        #lm = predictions[:, 4:]
-        #lm = lm[:, [x - 2 if x % 2 == 0 else x for x in range(1, lm.shape[1])] + [-1]]
+        # lm = predictions[:, 4:]
+        # lm = lm[:, [x - 2 if x % 2 == 0 else x for x in range(1, lm.shape[1])] + [-1]]
 
-        return predictions
+        return [x for x, _ in self.detections]
 
-    def to_output(self, data: tuple) -> dict:
-        def create_stream(stream_data, template, input_stream, dim_labels, media_type):
-            return SSIStream(
-                data=stream_data.astype(template.meta_data.dtype),
-                sample_rate=1
-                if isinstance(input_stream, Image)
-                else input_stream.meta_data.sample_rate,
-                dim_labels=dim_labels,
-                media_type=media_type,
-                custom_meta={
-                    "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}"
-                },
-                role=template.meta_data.role,
-                dataset=template.meta_data.dataset,
-                name=template.meta_data.name,
-                session=template.meta_data.session,
+    def convert_to_ssi_skeleton(self, frame: PoseLandmarkerResult) -> list:
+
+        # Media pipe mapping: https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
+        # 0 - nose
+        # 1 - left eye (inner)
+        # 2 - left eye
+        # 3 - left eye (outer)
+        # 4 - right eye (inner)
+        # 5 - right eye
+        # 6 - right eye (outer)
+        # 7 - left ear
+        # 8 - right ear
+        # 9 - mouth (left)
+        # 10 - mouth (right)
+        # 11 - left shoulder
+        # 12 - right shoulder
+        # 13 - left elbow
+        # 14 - right elbow
+        # 15 - left wrist
+        # 16 - right wrist
+        # 17 - left pinky
+        # 18 - right pinky
+        # 19 - left index
+        # 20 - right index
+        # 21 - left thumb
+        # 22 - right thumb
+        # 23 - left hip
+        # 24 - right hip
+        # 25 - left knee
+        # 26 - right knee
+        # 27 - left ankle
+        # 28 - right ankle
+        # 29 - left heel
+        # 30 - right heel
+        # 31 - left foot index
+        # 32 - right foot index
+
+
+        # SSI Mapping: https://hcai.eu/svn/Johannes/openssi/trunk/plugins/microsoftkinect/include/MicrosoftKinect.h
+        # 0 = HIP_CENTER
+        # 1 = SPINE,
+        # 2= SHOULDER_CENTER,
+        # 3 = HEAD,
+        # 4 = SHOULDER_LEFT,
+        # 5 = ELBOW_LEFT,
+        # 6 = WRIST_LEFT,
+        # 7 = HAND_LEFT,
+        # 8 = SHOULDER_RIGHT,
+        # 9 = ELBOW_RIGHT,
+        # 10 = WRIST_RIGHT,
+        # 11 = HAND_RIGHT,
+        # 12 = HIP_LEFT,
+        # 13 = KNEE_LEFT,
+        # 14 = ANKLE_LEFT,
+        # 15 = FOOT_LEFT,
+        # 16 = HIP_RIGHT,
+        # 17 = KNEE_RIGHT,
+        # 18 = ANKLE_RIGHT,
+        # 19 = FOOT_RIGHT,
+
+        for i, pose_landmark in enumerate(PoseLandmarkerResult.pose_landmarks):
+            # HIP_CENTER
+            hip_center_x = (pose_landmark[23].x + pose_landmark[24].x) / 2
+            hip_center_y = (pose_landmark[23].y + pose_landmark[24].y) / 2
+            hip_center_z = (pose_landmark[23].z + pose_landmark[24].z) / 2
+
+            # SHOULDER_CENTER
+            shoulder_center_x = (pose_landmark[23].x + pose_landmark[24].x) / 2
+            shoulder_center_y =(pose_landmark[23].y + pose_landmark[24].y) / 2
+            shoulder_center_z = (pose_landmark[23].z + pose_landmark[24].z) / 2
+
+            # SPINE
+            SPINE =  hip_center_x +
+
+
+            # 2= SHOULDER_CENTER,
+            # 3 = HEAD,
+            # 4 = SHOULDER_LEFT,
+            # 5 = ELBOW_LEFT,
+            # 6 = WRIST_LEFT,
+            # 7 = HAND_LEFT,
+            # 8 = SHOULDER_RIGHT,
+            # 9 = ELBOW_RIGHT,
+            # 10 = WRIST_RIGHT,
+            # 11 = HAND_RIGHT,
+            # 12 = HIP_LEFT,
+            # 13 = KNEE_LEFT,
+            # 14 = ANKLE_LEFT,
+            # 15 = FOOT_LEFT,
+            # 16 = HIP_RIGHT,
+            # 17 = KNEE_RIGHT,
+            # 18 = ANKLE_RIGHT,
+            # 19 = FOOT_RIGHT,
+
+
+
+
+        def to_output(self, data: tuple) -> dict:
+            ...
+
+
+
+            def create_stream(stream_data, template, input_stream, dim_labels, media_type):
+                return SSIStream(
+                    data=stream_data.astype(template.meta_data.dtype),
+                    sample_rate=1
+                    if isinstance(input_stream, Image)
+                    else input_stream.meta_data.sample_rate,
+                    dim_labels=dim_labels,
+                    media_type=media_type,
+                    custom_meta={
+                        "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}"
+                    },
+                    role=template.meta_data.role,
+                    dataset=template.meta_data.dataset,
+                    name=template.meta_data.name,
+                    session=template.meta_data.session,
+                )
+
+            self.session_manager.output_data_templates[OUTPUT_ID] = create_stream(
+                data[0],
+                self.session_manager.output_data_templates[OUTPUT_ID],
+                self.session_manager.input_data[INPUT_ID],
+                _dl,
+                MEDIA_TYPE_ID_BB,
             )
 
-        self.session_manager.output_data_templates[OUTPUT_ID] = create_stream(
-            data[0],
-            self.session_manager.output_data_templates[OUTPUT_ID],
-            self.session_manager.input_data[INPUT_ID],
-            _dl,
-            MEDIA_TYPE_ID_BB,
-        )
-
-        return self.session_manager.output_data_templates
+            return self.session_manager.output_data_templates
 
 
 if __name__ == "__main__":
@@ -289,7 +417,7 @@ if __name__ == "__main__":
 
 
     def draw_landmarks_on_image(rgb_image, detection_result):
-        pose_landmarks_list = detection_result
+        pose_landmarks_list = detection_result.pose_landmarks
         annotated_image = np.copy(rgb_image)
 
         # Loop through the detected poses to visualize.
@@ -308,24 +436,24 @@ if __name__ == "__main__":
                 solutions.drawing_styles.get_default_pose_landmarks_style())
         return annotated_image
 
+
     dotenv.load_dotenv()
     base_dir = Path(os.getenv("DISCOVER_DATA_DIR"))
     out_dir = Path(os.getenv("DISCOVER_TEST_DIR"))
-    stream_out = Path(out_dir /"blaze_pose_out.stream")
+    stream_out = Path(out_dir / "blaze_pose_out.stream")
 
-    image = False
-    video = True
+    running_mode = "live_stream"  # "video", "live_stream", "image"
 
     bp_trainer = Trainer()
     bp_trainer.load_from_file("blazepose.trainer")
     bp = BlazePose(
         model_io=None,
         trainer=bp_trainer,
-        opts={},
+        opts={"running_mode": running_mode, "model" : "light"},
     )
 
-    if image:
-        img_in = Path(base_dir / "test_files" / "test_pose.jpg")
+    if running_mode == "image":
+        img_in = Path(base_dir / "test_pose.jpg")
 
         dd_input_image = {
             "src": "file:image",
@@ -348,23 +476,20 @@ if __name__ == "__main__":
         # Predict
         detection_result = bp.process_data(dm_image)
 
-
         # Get original input image for plotting
         input_image = bp.get_session_manager(dm_image).input_data[INPUT_ID].data
         annotated_image = draw_landmarks_on_image(input_image, detection_result[0])
 
-
         plt.imshow(annotated_image)
         plt.show()
-        exit()
 
         # Save to Disk
         # for k, v in bf.to_output(output).items():
         #     sm_image.output_data_templates[k] = v
         # sm_image.save()
 
-    if video:
-        video_in = Path(base_dir / "test_files" / "patient.video.mp4")
+    if running_mode == "video" or running_mode == "live_stream":
+        video_in = Path(base_dir / "test_pose.mp4")
 
         dd_input_video = {
             "src": "file:stream:video",
@@ -387,26 +512,21 @@ if __name__ == "__main__":
         # Predict
         detection_result = bp.process_data(dm_video)
 
-
         # Get original input image for plotting
         input_ = bp.get_session_manager(dm_video).input_data[INPUT_ID].data
 
-        for i in range(0,500,30):
+        for i in range(0, 499, 30):
             annotated_image = draw_landmarks_on_image(input_[i], detection_result[i])
             plt.imshow(annotated_image)
             plt.show()
-        exit()
 
-
-
-        dm_video = DatasetManager([dd_input_video, dd_output_bb, dd_output_lm])
-        sm_video = bf.get_session_manager(dm_video)
-        dm_video.load()
-        output = bf.process_data(dm_video)
-        video = sm_video.input_data[INPUT_ID].data
-        plot_detections(video[100], output[0][100], output[1][100])
-
-        for k, v in bf.to_output(output).items():
-            sm_video.output_data_templates[k] = v
-        sm_video.save()
-
+    # dm_video = DatasetManager([dd_input_video, dd_output_bb, dd_output_lm])
+    # sm_video = bf.get_session_manager(dm_video)
+    # dm_video.load()
+    # output = bf.process_data(dm_video)
+    # video = sm_video.input_data[INPUT_ID].data
+    # plot_detections(video[100], output[0][100], output[1][100])
+    #
+    # for k, v in bf.to_output(output).items():
+    #     sm_video.output_data_templates[k] = v
+    # sm_video.save()
