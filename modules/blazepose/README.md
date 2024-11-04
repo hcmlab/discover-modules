@@ -1,53 +1,374 @@
-# BlazeFace
-This module is a Pytorch implementation of blazeface.
-It will the detect the most prominent face in an image and returns a stream containing the coordinates of the bounding
-box as well as the confidence values.
+# BlazePose
+This module is a Pytorch implementation of blazepose.
+It will the detect the most prominent pose in an image and returns a stream containing the coordinates of the skeleton as well as the confidence values.
 
-* https://arxiv.org/pdf/1907.05047.pdf
-* https://github.com/hollance/BlazeFace-PyTorch
+https://arxiv.org/abs/2006.10204
 
 ## Options
 
 - `model` (`list`):  identifier of the model to choose:
-  - `front`
-  - `back`
-
-- `min_suppression_thresh` (`float`) : `0.3`, The minimum non-maximum-suppression threshold for face detection to be considered overlapped.
-- `min_score_thresh` (`float`) : `0.5`, The minimum confidence score for the face detection to be considered successful.
-- `batch_size` (`int`) : `50`,  Number of samples to process at once, increases speed but also (V)RAM consumption.
-- `repeat_last` (`bool`) : `True`,  If set to true frames with a confidence below "min_score_thresh" will be replaced with the last frame where the confidence is above the threshold. The confidence of the replaced frame is set to zero.
+  - `light`
+  - `full`
+  - `heavy`
 
 ## IO
 Explanation of inputs and outputs as specified in the trainer file:
 
 ### Input
-- `video` (`Video`): The video input on which the model should detect the faces
+- `video` (`Video`): The video input on which the model should detect the pose
 
 ### Output
-- `bounding_box` (`stream:SSIStream:feature;face;boundingbox;blazeface`) : The output stream containing the coordinated of the bounding box. Coordinates are normalized with respect to the image resolution, with 0,0 being the top left corner. Coordinates might be negative or bigger than one. This reflects an extension of the bounding box beyond the image.  
-    - `ymin`
-    - `xmin`
-    - `ymax`
-    - `xmax`
-    - `confidence_value`
-
-    
-- `landmarks` (`stream:SSIStream:feature;face;landmarks;blazeface`) : The output stream containing the coordinated of the landmarks. Coordinates are normalized with respect to the image resolution, with 0,0 being the top left corner. Coordinates might be negative or bigger than one. This reflects an extension of the bounding box beyond the image.
-  - The 12 numbers are the y,x-coordinates of the 6 facial landmark keypoints:
-    - `right_exe_y` 
-    - `right_eye_x`
-    - `left_eye_y`
-    - `left_eye_x`
-    - `nose_y`
-    - `nose_x`
-    - `mouth_y` 
-    - `mouth_x`
-    - `right_ear_y`
-    - `right_ear_x`
-    - `left_ear_y` 
-    - `left_ear_x`
-    - `confidence_value`
-    - Tip: these labeled as seen from the perspective of the person, so their right is your left.
+- `pose` (`stream:SSIStream:feature;body;pose;blazepose`) : The output stream containing the coordinated of the pose. Coordinates are normalized with respect to the image resolution, with 0,0 being the top center coordinate.
+  - 0:`HEAD_POS_X`
+  - 1:`HEAD_POS_Y`
+  - 2:`HEAD_POS_Z`
+  - 3:`HEAD_POS_CONF`
+  - 4:`HEAD_ROT_W`
+  - 5:`HEAD_ROT_X`
+  - 6:`HEAD_ROT_Y`
+  - 7:`HEAD_ROT_Z`
+  - 8:`HEAD_ROT_CONF`
+  - 9:`HEAD_ROT_REL_W`
+  - 10:`HEAD_ROT_REL_X`
+  - 11:`HEAD_ROT_REL_Y`
+  - 12:`HEAD_ROT_REL_Z`
+  - 13:`HEAD_ROT_REL_CONF`
+  - 14:`NECK_POS_X`
+  - 15:`NECK_POS_Y`
+  - 16:`NECK_POS_Z`
+  - 17:`NECK_POS_CONF`
+  - 18:`NECK_ROT_W`
+  - 19:`NECK_ROT_X`
+  - 20:`NECK_ROT_Y`
+  - 21:`NECK_ROT_Z`
+  - 22:`NECK_ROT_CONF`
+  - 23:`NECK_ROT_REL_W`
+  - 24:`NECK_ROT_REL_X`
+  - 25:`NECK_ROT_REL_Y`
+  - 26:`NECK_ROT_REL_Z`
+  - 27:`NECK_ROT_REL_CONF`
+  - 28:`TORSO_POS_X`
+  - 29:`TORSO_POS_Y`
+  - 30:`TORSO_POS_Z`
+  - 31:`TORSO_POS_CONF`
+  - 32:`TORSO_ROT_W`
+  - 33:`TORSO_ROT_X`
+  - 34:`TORSO_ROT_Y`
+  - 35:`TORSO_ROT_Z`
+  - 36:`TORSO_ROT_CONF`
+  - 37:`TORSO_ROT_REL_W`
+  - 38:`TORSO_ROT_REL_X`
+  - 39:`TORSO_ROT_REL_Y`
+  - 40:`TORSO_ROT_REL_Z`
+  - 41:`TORSO_ROT_REL_CONF`
+  - 42:`WAIST_POS_X`
+  - 43:`WAIST_POS_Y`
+  - 44:`WAIST_POS_Z`
+  - 45:`WAIST_POS_CONF`
+  - 46:`WAIST_ROT_W`
+  - 47:`WAIST_ROT_X`
+  - 48:`WAIST_ROT_Y`
+  - 49:`WAIST_ROT_Z`
+  - 50:`WAIST_ROT_CONF`
+  - 51:`WAIST_ROT_REL_W`
+  - 52:`WAIST_ROT_REL_X`
+  - 53:`WAIST_ROT_REL_Y`
+  - 54:`WAIST_ROT_REL_Z`
+  - 55:`WAIST_ROT_REL_CONF`
+  - 56:`LEFT_SHOULDER_POS_X`
+  - 57:`LEFT_SHOULDER_POS_Y`
+  - 58:`LEFT_SHOULDER_POS_Z`
+  - 59:`LEFT_SHOULDER_POS_CONF`
+  - 60:`LEFT_SHOULDER_ROT_W`
+  - 61:`LEFT_SHOULDER_ROT_X`
+  - 62:`LEFT_SHOULDER_ROT_Y`
+  - 63:`LEFT_SHOULDER_ROT_Z`
+  - 64:`LEFT_SHOULDER_ROT_CONF`
+  - 65:`LEFT_SHOULDER_ROT_REL_W`
+  - 66:`LEFT_SHOULDER_ROT_REL_X`
+  - 67:`LEFT_SHOULDER_ROT_REL_Y`
+  - 68:`LEFT_SHOULDER_ROT_REL_Z`
+  - 69:`LEFT_SHOULDER_ROT_REL_CONF`
+  - 70:`LEFT_ELBOW_POS_X`
+  - 71:`LEFT_ELBOW_POS_Y`
+  - 72:`LEFT_ELBOW_POS_Z`
+  - 73:`LEFT_ELBOW_POS_CONF`
+  - 74:`LEFT_ELBOW_ROT_W`
+  - 75:`LEFT_ELBOW_ROT_X`
+  - 76:`LEFT_ELBOW_ROT_Y`
+  - 77:`LEFT_ELBOW_ROT_Z`
+  - 78:`LEFT_ELBOW_ROT_CONF`
+  - 79:`LEFT_ELBOW_ROT_REL_W`
+  - 80:`LEFT_ELBOW_ROT_REL_X`
+  - 81:`LEFT_ELBOW_ROT_REL_Y`
+  - 82:`LEFT_ELBOW_ROT_REL_Z`
+  - 83:`LEFT_ELBOW_ROT_REL_CONF`
+  - 84:`LEFT_WRIST_POS_X`
+  - 85:`LEFT_WRIST_POS_Y`
+  - 86:`LEFT_WRIST_POS_Z`
+  - 87:`LEFT_WRIST_POS_CONF`
+  - 88:`LEFT_WRIST_ROT_W`
+  - 89:`LEFT_WRIST_ROT_X`
+  - 90:`LEFT_WRIST_ROT_Y`
+  - 91:`LEFT_WRIST_ROT_Z`
+  - 92:`LEFT_WRIST_ROT_CONF`
+  - 93:`LEFT_WRIST_ROT_REL_W`
+  - 94:`LEFT_WRIST_ROT_REL_X`
+  - 95:`LEFT_WRIST_ROT_REL_Y`
+  - 96:`LEFT_WRIST_ROT_REL_Z`
+  - 97:`LEFT_WRIST_ROT_REL_CONF`
+  - 98:`LEFT_HAND_POS_X`
+  - 99:`LEFT_HAND_POS_Y`
+  - 100:`LEFT_HAND_POS_Z`
+  - 101:`LEFT_HAND_POS_CONF`
+  - 102:`LEFT_HAND_ROT_W`
+  - 103:`LEFT_HAND_ROT_X`
+  - 104:`LEFT_HAND_ROT_Y`
+  - 105:`LEFT_HAND_ROT_Z`
+  - 106:`LEFT_HAND_ROT_CONF`
+  - 107:`LEFT_HAND_ROT_REL_W`
+  - 108:`LEFT_HAND_ROT_REL_X`
+  - 109:`LEFT_HAND_ROT_REL_Y`
+  - 110:`LEFT_HAND_ROT_REL_Z`
+  - 111:`LEFT_HAND_ROT_REL_CONF`
+  - 112:`RIGHT_SHOULDER_POS_X`
+  - 113:`RIGHT_SHOULDER_POS_Y`
+  - 114:`RIGHT_SHOULDER_POS_Z`
+  - 115:`RIGHT_SHOULDER_POS_CONF`
+  - 116:`RIGHT_SHOULDER_ROT_W`
+  - 117:`RIGHT_SHOULDER_ROT_X`
+  - 118:`RIGHT_SHOULDER_ROT_Y`
+  - 119:`RIGHT_SHOULDER_ROT_Z`
+  - 120:`RIGHT_SHOULDER_ROT_CONF`
+  - 121:`RIGHT_SHOULDER_ROT_REL_W`
+  - 122:`RIGHT_SHOULDER_ROT_REL_X`
+  - 123:`RIGHT_SHOULDER_ROT_REL_Y`
+  - 124:`RIGHT_SHOULDER_ROT_REL_Z`
+  - 125:`RIGHT_SHOULDER_ROT_REL_CONF`
+  - 126:`RIGHT_ELBOW_POS_X`
+  - 127:`RIGHT_ELBOW_POS_Y`
+  - 128:`RIGHT_ELBOW_POS_Z`
+  - 129:`RIGHT_ELBOW_POS_CONF`
+  - 130:`RIGHT_ELBOW_ROT_W`
+  - 131:`RIGHT_ELBOW_ROT_X`
+  - 132:`RIGHT_ELBOW_ROT_Y`
+  - 133:`RIGHT_ELBOW_ROT_Z`
+  - 134:`RIGHT_ELBOW_ROT_CONF`
+  - 135:`RIGHT_ELBOW_ROT_REL_W`
+  - 136:`RIGHT_ELBOW_ROT_REL_X`
+  - 137:`RIGHT_ELBOW_ROT_REL_Y`
+  - 138:`RIGHT_ELBOW_ROT_REL_Z`
+  - 139:`RIGHT_ELBOW_ROT_REL_CONF`
+  - 140:`RIGHT_WRIST_POS_X`
+  - 141:`RIGHT_WRIST_POS_Y`
+  - 142:`RIGHT_WRIST_POS_Z`
+  - 143:`RIGHT_WRIST_POS_CONF`
+  - 144:`RIGHT_WRIST_ROT_W`
+  - 145:`RIGHT_WRIST_ROT_X`
+  - 146:`RIGHT_WRIST_ROT_Y`
+  - 147:`RIGHT_WRIST_ROT_Z`
+  - 148:`RIGHT_WRIST_ROT_CONF`
+  - 149:`RIGHT_WRIST_ROT_REL_W`
+  - 150:`RIGHT_WRIST_ROT_REL_X`
+  - 151:`RIGHT_WRIST_ROT_REL_Y`
+  - 152:`RIGHT_WRIST_ROT_REL_Z`
+  - 153:`RIGHT_WRIST_ROT_REL_CONF`
+  - 154:`RIGHT_HAND_POS_X`
+  - 155:`RIGHT_HAND_POS_Y`
+  - 156:`RIGHT_HAND_POS_Z`
+  - 157:`RIGHT_HAND_POS_CONF`
+  - 158:`RIGHT_HAND_ROT_W`
+  - 159:`RIGHT_HAND_ROT_X`
+  - 160:`RIGHT_HAND_ROT_Y`
+  - 161:`RIGHT_HAND_ROT_Z`
+  - 162:`RIGHT_HAND_ROT_CONF`
+  - 163:`RIGHT_HAND_ROT_REL_W`
+  - 164:`RIGHT_HAND_ROT_REL_X`
+  - 165:`RIGHT_HAND_ROT_REL_Y`
+  - 166:`RIGHT_HAND_ROT_REL_Z`
+  - 167:`RIGHT_HAND_ROT_REL_CONF`
+  - 168:`LEFT_HIP_POS_X`
+  - 169:`LEFT_HIP_POS_Y`
+  - 170:`LEFT_HIP_POS_Z`
+  - 171:`LEFT_HIP_POS_CONF`
+  - 172:`LEFT_HIP_ROT_W`
+  - 173:`LEFT_HIP_ROT_X`
+  - 174:`LEFT_HIP_ROT_Y`
+  - 175:`LEFT_HIP_ROT_Z`
+  - 176:`LEFT_HIP_ROT_CONF`
+  - 177:`LEFT_HIP_ROT_REL_W`
+  - 178:`LEFT_HIP_ROT_REL_X`
+  - 179:`LEFT_HIP_ROT_REL_Y`
+  - 180:`LEFT_HIP_ROT_REL_Z`
+  - 181:`LEFT_HIP_ROT_REL_CONF`
+  - 182:`LEFT_KNEE_POS_X`
+  - 183:`LEFT_KNEE_POS_Y`
+  - 184:`LEFT_KNEE_POS_Z`
+  - 185:`LEFT_KNEE_POS_CONF`
+  - 186:`LEFT_KNEE_ROT_W`
+  - 187:`LEFT_KNEE_ROT_X`
+  - 188:`LEFT_KNEE_ROT_Y`
+  - 189:`LEFT_KNEE_ROT_Z`
+  - 190:`LEFT_KNEE_ROT_CONF`
+  - 191:`LEFT_KNEE_ROT_REL_W`
+  - 192:`LEFT_KNEE_ROT_REL_X`
+  - 193:`LEFT_KNEE_ROT_REL_Y`
+  - 194:`LEFT_KNEE_ROT_REL_Z`
+  - 195:`LEFT_KNEE_ROT_REL_CONF`
+  - 196:`LEFT_ANKLE_POS_X`
+  - 197:`LEFT_ANKLE_POS_Y`
+  - 198:`LEFT_ANKLE_POS_Z`
+  - 199:`LEFT_ANKLE_POS_CONF`
+  - 200:`LEFT_ANKLE_ROT_W`
+  - 201:`LEFT_ANKLE_ROT_X`
+  - 202:`LEFT_ANKLE_ROT_Y`
+  - 203:`LEFT_ANKLE_ROT_Z`
+  - 204:`LEFT_ANKLE_ROT_CONF`
+  - 205:`LEFT_ANKLE_ROT_REL_W`
+  - 206:`LEFT_ANKLE_ROT_REL_X`
+  - 207:`LEFT_ANKLE_ROT_REL_Y`
+  - 208:`LEFT_ANKLE_ROT_REL_Z`
+  - 209:`LEFT_ANKLE_ROT_REL_CONF`
+  - 210:`LEFT_FOOT_POS_X`
+  - 211:`LEFT_FOOT_POS_Y`
+  - 212:`LEFT_FOOT_POS_Z`
+  - 213:`LEFT_FOOT_POS_CONF`
+  - 214:`LEFT_FOOT_ROT_W`
+  - 215:`LEFT_FOOT_ROT_X`
+  - 216:`LEFT_FOOT_ROT_Y`
+  - 217:`LEFT_FOOT_ROT_Z`
+  - 218:`LEFT_FOOT_ROT_CONF`
+  - 219:`LEFT_FOOT_ROT_REL_W`
+  - 220:`LEFT_FOOT_ROT_REL_X`
+  - 221:`LEFT_FOOT_ROT_REL_Y`
+  - 222:`LEFT_FOOT_ROT_REL_Z`
+  - 223:`LEFT_FOOT_ROT_REL_CONF`
+  - 224:`RIGHT_HIP_POS_X`
+  - 225:`RIGHT_HIP_POS_Y`
+  - 226:`RIGHT_HIP_POS_Z`
+  - 227:`RIGHT_HIP_POS_CONF`
+  - 228:`RIGHT_HIP_ROT_W`
+  - 229:`RIGHT_HIP_ROT_X`
+  - 230:`RIGHT_HIP_ROT_Y`
+  - 231:`RIGHT_HIP_ROT_Z`
+  - 232:`RIGHT_HIP_ROT_CONF`
+  - 233:`RIGHT_HIP_ROT_REL_W`
+  - 234:`RIGHT_HIP_ROT_REL_X`
+  - 235:`RIGHT_HIP_ROT_REL_Y`
+  - 236:`RIGHT_HIP_ROT_REL_Z`
+  - 237:`RIGHT_HIP_ROT_REL_CONF`
+  - 238:`RIGHT_KNEE_POS_X`
+  - 239:`RIGHT_KNEE_POS_Y`
+  - 240:`RIGHT_KNEE_POS_Z`
+  - 241:`RIGHT_KNEE_POS_CONF`
+  - 242:`RIGHT_KNEE_ROT_W`
+  - 243:`RIGHT_KNEE_ROT_X`
+  - 244:`RIGHT_KNEE_ROT_Y`
+  - 245:`RIGHT_KNEE_ROT_Z`
+  - 246:`RIGHT_KNEE_ROT_CONF`
+  - 247:`RIGHT_KNEE_ROT_REL_W`
+  - 248:`RIGHT_KNEE_ROT_REL_X`
+  - 249:`RIGHT_KNEE_ROT_REL_Y`
+  - 250:`RIGHT_KNEE_ROT_REL_Z`
+  - 251:`RIGHT_KNEE_ROT_REL_CONF`
+  - 252:`RIGHT_ANKLE_POS_X`
+  - 253:`RIGHT_ANKLE_POS_Y`
+  - 254:`RIGHT_ANKLE_POS_Z`
+  - 255:`RIGHT_ANKLE_POS_CONF`
+  - 256:`RIGHT_ANKLE_ROT_W`
+  - 257:`RIGHT_ANKLE_ROT_X`
+  - 258:`RIGHT_ANKLE_ROT_Y`
+  - 259:`RIGHT_ANKLE_ROT_Z`
+  - 260:`RIGHT_ANKLE_ROT_CONF`
+  - 261:`RIGHT_ANKLE_ROT_REL_W`
+  - 262:`RIGHT_ANKLE_ROT_REL_X`
+  - 263:`RIGHT_ANKLE_ROT_REL_Y`
+  - 264:`RIGHT_ANKLE_ROT_REL_Z`
+  - 265:`RIGHT_ANKLE_ROT_REL_CONF`
+  - 266:`RIGHT_FOOT_POS_X`
+  - 267:`RIGHT_FOOT_POS_Y`
+  - 268:`RIGHT_FOOT_POS_Z`
+  - 269:`RIGHT_FOOT_POS_CONF`
+  - 270:`RIGHT_FOOT_ROT_W`
+  - 271:`RIGHT_FOOT_ROT_X`
+  - 272:`RIGHT_FOOT_ROT_Y`
+  - 273:`RIGHT_FOOT_ROT_Z`
+  - 274:`RIGHT_FOOT_ROT_CONF`
+  - 275:`RIGHT_FOOT_ROT_REL_W`
+  - 276:`RIGHT_FOOT_ROT_REL_X`
+  - 277:`RIGHT_FOOT_ROT_REL_Y`
+  - 278:`RIGHT_FOOT_ROT_REL_Z`
+  - 279:`RIGHT_FOOT_ROT_REL_CONF`
+  - 280:`FACE_NOSE_POS_X`
+  - 281:`FACE_NOSE_POS_Y`
+  - 282:`FACE_NOSE_POS_Z`
+  - 283:`FACE_NOSE_POS_CONF`
+  - 284:`FACE_NOSE_ROT_W`
+  - 285:`FACE_NOSE_ROT_X`
+  - 286:`FACE_NOSE_ROT_Y`
+  - 287:`FACE_NOSE_ROT_Z`
+  - 288:`FACE_NOSE_ROT_CONF`
+  - 289:`FACE_NOSE_ROT_REL_W`
+  - 290:`FACE_NOSE_ROT_REL_X`
+  - 291:`FACE_NOSE_ROT_REL_Y`
+  - 292:`FACE_NOSE_ROT_REL_Z`
+  - 293:`FACE_NOSE_ROT_REL_CONF`
+  - 294:`FACE_LEFT_EAR_POS_X`
+  - 295:`FACE_LEFT_EAR_POS_Y`
+  - 296:`FACE_LEFT_EAR_POS_Z`
+  - 297:`FACE_LEFT_EAR_POS_CONF`
+  - 298:`FACE_LEFT_EAR_ROT_W`
+  - 299:`FACE_LEFT_EAR_ROT_X`
+  - 300:`FACE_LEFT_EAR_ROT_Y`
+  - 301:`FACE_LEFT_EAR_ROT_Z`
+  - 302:`FACE_LEFT_EAR_ROT_CONF`
+  - 303:`FACE_LEFT_EAR_ROT_REL_W`
+  - 304:`FACE_LEFT_EAR_ROT_REL_X`
+  - 305:`FACE_LEFT_EAR_ROT_REL_Y`
+  - 306:`FACE_LEFT_EAR_ROT_REL_Z`
+  - 307:`FACE_LEFT_EAR_ROT_REL_CONF`
+  - 308:`FACE_RIGHT_EAR_POS_X`
+  - 309:`FACE_RIGHT_EAR_POS_Y`
+  - 310:`FACE_RIGHT_EAR_POS_Z`
+  - 311:`FACE_RIGHT_EAR_POS_CONF`
+  - 312:`FACE_RIGHT_EAR_ROT_W`
+  - 313:`FACE_RIGHT_EAR_ROT_X`
+  - 314:`FACE_RIGHT_EAR_ROT_Y`
+  - 315:`FACE_RIGHT_EAR_ROT_Z`
+  - 316:`FACE_RIGHT_EAR_ROT_CONF`
+  - 317:`FACE_RIGHT_EAR_ROT_REL_W`
+  - 318:`FACE_RIGHT_EAR_ROT_REL_X`
+  - 319:`FACE_RIGHT_EAR_ROT_REL_Y`
+  - 320:`FACE_RIGHT_EAR_ROT_REL_Z`
+  - 321:`FACE_RIGHT_EAR_ROT_REL_CONF`
+  - 322:`FACE_FOREHEAD_POS_X`
+  - 323:`FACE_FOREHEAD_POS_Y`
+  - 324:`FACE_FOREHEAD_POS_Z`
+  - 325:`FACE_FOREHEAD_POS_CONF`
+  - 326:`FACE_FOREHEAD_ROT_W`
+  - 327:`FACE_FOREHEAD_ROT_X`
+  - 328:`FACE_FOREHEAD_ROT_Y`
+  - 329:`FACE_FOREHEAD_ROT_Z`
+  - 330:`FACE_FOREHEAD_ROT_CONF`
+  - 331:`FACE_FOREHEAD_ROT_REL_W`
+  - 332:`FACE_FOREHEAD_ROT_REL_X`
+  - 333:`FACE_FOREHEAD_ROT_REL_Y`
+  - 334:`FACE_FOREHEAD_ROT_REL_Z`
+  - 335:`FACE_FOREHEAD_ROT_REL_CONF`
+  - 336:`FACE_CHIN_POS_X`
+  - 337:`FACE_CHIN_POS_Y`
+  - 338:`FACE_CHIN_POS_Z`
+  - 339:`FACE_CHIN_POS_CONF`
+  - 340:`FACE_CHIN_ROT_W`
+  - 341:`FACE_CHIN_ROT_X`
+  - 342:`FACE_CHIN_ROT_Y`
+  - 343:`FACE_CHIN_ROT_Z`
+  - 344:`FACE_CHIN_ROT_CONF`
+  - 345:`FACE_CHIN_ROT_REL_W`
+  - 346:`FACE_CHIN_ROT_REL_X`
+  - 347:`FACE_CHIN_ROT_REL_Y`
+  - 348:`FACE_CHIN_ROT_REL_Z`
+  - 349:`FACE_CHIN_ROT_REL_CONF`
 
 
 ## Examples
@@ -59,12 +380,12 @@ import requests
 import json
 
 payload = {
-  "jobID" : "´blaze_face_stream",
+  "jobID" : "´blaze_pose_stream",
   "data": json.dumps([
-    {"src":"file:stream:video", "type":"input", "id":"input_video", "uri":"path/to/my/file.mp4"},
-    {"src":"file:stream:ssistream", "type":"output", "id":"output_stream",  "uri":"path/to/my/stream.stream"}
+    {"src":"file:stream:video", "type":"input", "id":"video", "uri":"path/to/my/file.mp4"},
+    {"src":"file:stream:ssistream", "type":"output", "id":"pose",  "uri":"path/to/my/stream.stream"}
   ]),
-  "trainerFilePath": "modules\\blazeface\\blazeface.trainer",
+  "trainerFilePath": "modules\\blazepose\\blazepose.trainer",
 }
 
 
@@ -77,15 +398,15 @@ print(x.text)
 
 ## Citation
 ```
-@article{bazarevsky2019blazeface,
-title={Blazeface: Sub-millisecond neural face detection on mobile gpus},
-author={Bazarevsky, Valentin and Kartynnik, Yury and Vakunov, Andrey and Raveendran, Karthik and Grundmann, Matthias},
-journal={arXiv preprint arXiv:1907.05047},
-year={2019}
+@article{bazarevsky2020blazepose,
+  title={BlazePose: On-device Real-time Body Pose tracking},
+  author={Bazarevsky, V},
+  journal={arXiv preprint arXiv:2006.10204},
+  year={2020}
 }
 ```
 
 ## License
-Integration of the Pytorch BlazeFace implementation by Matthijs Hollemans into DISCOVER.
+Integration of the MediaPioe BlazePose implementation by the MediaPipe team into DISCOVER.
 This work is licensed under the same terms as MediaPipe (Apache License 2.0)
-https://github.com/google/mediapipe/blob/master/LICENSE
+https://drive.google.com/file/d/10WlcTvrQnR_R2TdTmKw0nkyRLqrwNkWU/preview
