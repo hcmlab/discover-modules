@@ -34,8 +34,7 @@ from discover_utils.data.stream import SSIStream
 INPUT_ID = "video"
 OUTPUT_ID = "pose"
 
-#MEDIA_TYPE_ID_BB = "stream:SSIStream:feature;body;pose;blazepose"
-MEDIA_TYPE_ID_BB = "skeleton"
+MEDIA_TYPE_ID_BB = "stream:SSIStream:feature;body;skeleton;blazepose"
 
 _default_options = {
     "repeat_last": True,
@@ -202,9 +201,9 @@ class BlazePose(Processor):
                 if self.running_mode == mp.tasks.vision.RunningMode.LIVE_STREAM:
                     self.detector.detect_async(mp_image, time_stamp_ms)
 
-            ### TODO: DEBUG ONLY ###
-            if i == 2000:
-                break
+            # ### TODO: DEBUG ONLY ###
+            # if i == 500:
+            #     break
 
         if self.running_mode == mp.tasks.vision.RunningMode.LIVE_STREAM:
             # Wait for async tasks to finish
@@ -273,11 +272,11 @@ class BlazePose(Processor):
         def unpack_landmarks(pl: NormalizedLandmark):
             return pl.x, pl.y, pl.z, pl.visibility, pl.presence
 
+        def diff_landmarks(x_1, y_1, z_1, visibility_1, presence_1, x_2, y_2, z_2, visibility_2, presence_2):
+            return abs(x_1-x_2), abs(y_1-y_2),  abs(z_1-z_2), abs(visibility_1-visibility_2), abs(presence_1-presence_2)
 
         def normalize_landmarks(x,y,z,visibility,presence):
-            return (x*2)-1, (y*2)-1, (z*2)-1, visibility, presence
-
-
+            return (x*2)-1, ((1-y)*2)-1, z, visibility, presence
 
         def average_landmarks(landmarks: list[NormalizedLandmark]):
             x, y, z, visibility, presence = 0, 0, 0, 0, 0
@@ -371,10 +370,18 @@ class BlazePose(Processor):
             ssi_skel.FACE_RIGHT_EAR.POS_X, ssi_skel.FACE_RIGHT_EAR.POS_Y, ssi_skel.FACE_RIGHT_EAR.POS_Z, _, ssi_skel.FACE_RIGHT_EAR.POS_CONF = normalize_landmarks(*unpack_landmarks(pose_landmark_list[8]))
 
             # 22 - FACE_FOREHEAD
-            # ?
+            eyes_avg_x, eyes_avg_y, eyes_avg_z, eyes_avg_visibility, eyes_avg_presence = normalize_landmarks( *average_landmarks([pose_landmark_list[1], pose_landmark_list[2], pose_landmark_list[3], pose_landmark_list[4], pose_landmark_list[5], pose_landmark_list[6] ]))
+            ssi_skel.FACE_FOREHEAD.POS_X = ssi_skel.FACE_NOSE.POS_X + 2 * abs(eyes_avg_x-ssi_skel.FACE_NOSE.POS_X)
+            ssi_skel.FACE_FOREHEAD.POS_Y = ssi_skel.FACE_NOSE.POS_Y + 2 * abs(eyes_avg_y-ssi_skel.FACE_NOSE.POS_Y)
+            ssi_skel.FACE_FOREHEAD.POS_Z = ssi_skel.FACE_NOSE.POS_Z + 2 * abs(eyes_avg_z-ssi_skel.FACE_NOSE.POS_Z)
+            ssi_skel.FACE_FOREHEAD.POS_CONF = (ssi_skel.FACE_NOSE.POS_CONF + eyes_avg_presence)  / 2
 
             # 23 - FACE_CHIN
-            # ?
+            mouth_avg_x, mouth_avg_y, mouth_avg_z, mouth_avg_visibility, mouth_avg_presence = normalize_landmarks( *average_landmarks([pose_landmark_list[9], pose_landmark_list[10] ]))
+            ssi_skel.FACE_CHIN.POS_X = ssi_skel.FACE_NOSE.POS_X + 2 * abs(mouth_avg_x-ssi_skel.FACE_NOSE.POS_X)
+            ssi_skel.FACE_CHIN.POS_Y = ssi_skel.FACE_NOSE.POS_Y - 2 * abs(mouth_avg_y-ssi_skel.FACE_NOSE.POS_Y)
+            ssi_skel.FACE_CHIN.POS_Z = ssi_skel.FACE_NOSE.POS_Z + 2 * abs(mouth_avg_z-ssi_skel.FACE_NOSE.POS_Z)
+            ssi_skel.FACE_CHIN.POS_CONF = (ssi_skel.FACE_NOSE.POS_CONF + mouth_avg_presence)  / 2
 
             skeletons.append(ssi_skel)
 
@@ -398,14 +405,17 @@ class BlazePose(Processor):
 
         def create_stream(stream_data, template, input_stream, dim_labels, media_type):
             return SSIStream(
-                data=np.asarray(ssi_skeleton_stream_data).astype(template.meta_data.dtype),
+                data=np.asarray(stream_data).astype(template.meta_data.dtype),
                 sample_rate=1
                 if isinstance(input_stream, Image)
                 else input_stream.meta_data.sample_rate,
                 dim_labels=dim_labels,
                 media_type=media_type,
                 custom_meta={
-                    "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}"
+                    "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}",
+                    "num" : str(self.num_poses),
+                    #"name" : "skeleton",
+                    "normalized" : "true"
                 },
                 role=template.meta_data.role,
                 dataset=template.meta_data.dataset,
@@ -415,7 +425,7 @@ class BlazePose(Processor):
 
 
         self.session_manager.output_data_templates[OUTPUT_ID] = create_stream(
-            data[0],
+            ssi_skeleton_stream_data,
             self.session_manager.output_data_templates[OUTPUT_ID],
             self.session_manager.input_data[INPUT_ID],
             _dl,
@@ -474,7 +484,7 @@ if __name__ == "__main__":
     out_dir = Path(os.getenv("DISCOVER_TEST_DIR"))
     stream_out = Path(out_dir / "blaze_pose_out.stream")
 
-    running_mode = "video"  # "video", "live_stream", "image"
+    running_mode = "live_stream"  # "video", "live_stream", "image"
 
     bp_trainer = Trainer()
     bp_trainer.load_from_file("blazepose.trainer")
@@ -553,7 +563,7 @@ if __name__ == "__main__":
         input_ = bp.get_session_manager(dm_video).input_data[INPUT_ID].data
 
         # for i in range(0, 499, 30):
-        #     annotated_image = draw_ssi_landmarks_on_image(input_[i], detection_results_stream[i])
+        #     annotated_image = draw_ssi_landmarks_on_image(input_[i], detection_result)
         #     plt.imshow(annotated_image)
         #     plt.show()
 
