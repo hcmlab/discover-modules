@@ -10,7 +10,7 @@ https://arxiv.org/abs/2006.10204
   - `full`
   - `light`
   - `heavy`
-- `mode` (`list`): the media pipe [running_mode](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)
+- `running_mode` (`list`): the media pipe [running_mode](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)
   - `image`
   - `video`
   - `live_stream`

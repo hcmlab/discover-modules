@@ -7,5 +7,5 @@
     <uri id="task_file_light" url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task" hash="" tar="False" />
     <uri id="task_file_full" url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task" hash="" tar="False" />
     <uri id="task_file_heavy" url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task" hash="" tar="False" /></meta>
-<model create="BlazePose" script="blaze_pose.py" optstr="{model:LIST:full,heavy,light};{mode:LIST:video,image,live_stream};{repeat_last:BOOL:True}"/>
+<model create="BlazePose" script="blaze_pose.py" optstr="{model:LIST:full,heavy,light};{running_mode:LIST:video,image,live_stream};{repeat_last:BOOL:True}"/>
 </trainer>
