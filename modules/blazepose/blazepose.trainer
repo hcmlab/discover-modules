@@ -3,7 +3,8 @@
 <info trained="true" seed="1234"/>
 <meta backend="nova-server" category="Body" description="Calculates the pose of a single person in the stream" is_iterable="False">
     <io type="input" id="video" data="stream:Video" default_value="video" />
-    <io type="output" id="pose" data="stream:SSIStream:feature;body;pose;blazepose" default_value="pose"/>
+    <io type="output" id="pose_ssi" data="stream:SSIStream:feature;body;pose;blazepose_ssi" default_value="pose_ssi"/>
+    <io type="output" id="pose_mp" data="stream:SSIStream:feature;body;pose;blazepose_mp" default_value="pose_mp"/>
     <uri id="task_file_light" url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task" hash="" tar="False" />
     <uri id="task_file_full" url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task" hash="" tar="False" />
     <uri id="task_file_heavy" url="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task" hash="" tar="False" /></meta>

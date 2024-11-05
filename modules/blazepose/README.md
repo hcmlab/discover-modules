@@ -23,7 +23,7 @@ Explanation of inputs and outputs as specified in the trainer file:
 - `video` (`Video`): The video input on which the model should detect the pose
 
 ### Output
-- `pose` (`stream:SSIStream:feature;body;pose;blazepose`) : The output stream containing the coordinated of the pose. Coordinates are normalized with respect to the image resolution, with 0,0 being the top center coordinate.
+- `pose_ssi` (`stream:SSIStream:feature;body;pose;blazepose`) : The output stream containing the coordinated of the pose in ssi format. Coordinates are normalized to [-1,1] with respect to the image resolution, with 0,0 being the top center coordinate.
   - 0:`HEAD_POS_X`
   - 1:`HEAD_POS_Y`
   - 2:`HEAD_POS_Z`
@@ -374,6 +374,173 @@ Explanation of inputs and outputs as specified in the trainer file:
   - 347:`FACE_CHIN_ROT_REL_Y`
   - 348:`FACE_CHIN_ROT_REL_Z`
   - 349:`FACE_CHIN_ROT_REL_CONF`
+
+- `pose_mp` (`stream:SSIStream:feature;body;pose;blazepose`) : The output stream containing the coordinated of the pose in media pipe format. Coordinates are normalized to [0,1] with respect to the image resolution, with 0,0 being the botom left coordinate.
+  - 0: `nose_x`
+  - 1: `nose_y`
+  - 2: `nose_z`
+  - 3: `nose_visibility`
+  - 4: `nose_presence`
+  - 5: `left eye (inner)_x`
+  - 6: `left eye (inner)_y`
+  - 7: `left eye (inner)_z`
+  - 8: `left eye (inner)_visibility`
+  - 9: `left eye (inner)_presence`
+  - 10: `left eye_x`
+  - 11: `left eye_y`
+  - 12: `left eye_z`
+  - 13: `left eye_visibility`
+  - 14: `left eye_presence`
+  - 15: `left eye (outer)_x`
+  - 16: `left eye (outer)_y`
+  - 17: `left eye (outer)_z`
+  - 18: `left eye (outer)_visibility`
+  - 19: `left eye (outer)_presence`
+  - 20: `right eye (inner)_x`
+  - 21: `right eye (inner)_y`
+  - 22: `right eye (inner)_z`
+  - 23: `right eye (inner)_visibility`
+  - 24: `right eye (inner)_presence`
+  - 25: `right eye_x`
+  - 26: `right eye_y`
+  - 27: `right eye_z`
+  - 28: `right eye_visibility`
+  - 29: `right eye_presence`
+  - 30: `right eye (outer)_x`
+  - 31: `right eye (outer)_y`
+  - 32: `right eye (outer)_z`
+  - 33: `right eye (outer)_visibility`
+  - 34: `right eye (outer)_presence`
+  - 35: `left ear_x`
+  - 36: `left ear_y`
+  - 37: `left ear_z`
+  - 38: `left ear_visibility`
+  - 39: `left ear_presence`
+  - 40: `right ear_x`
+  - 41: `right ear_y`
+  - 42: `right ear_z`
+  - 43: `right ear_visibility`
+  - 44: `right ear_presence`
+  - 45: `mouth (left)_x`
+  - 46: `mouth (left)_y`
+  - 47: `mouth (left)_z`
+  - 48: `mouth (left)_visibility`
+  - 49: `mouth (left)_presence`
+  - 50: `mouth (right)_x`
+  - 51: `mouth (right)_y`
+  - 52: `mouth (right)_z`
+  - 53: `mouth (right)_visibility`
+  - 54: `mouth (right)_presence`
+  - 55: `left shoulder_x`
+  - 56: `left shoulder_y`
+  - 57: `left shoulder_z`
+  - 58: `left shoulder_visibility`
+  - 59: `left shoulder_presence`
+  - 60: `right shoulder_x`
+  - 61: `right shoulder_y`
+  - 62: `right shoulder_z`
+  - 63: `right shoulder_visibility`
+  - 64: `right shoulder_presence`
+  - 65: `left elbow_x`
+  - 66: `left elbow_y`
+  - 67: `left elbow_z`
+  - 68: `left elbow_visibility`
+  - 69: `left elbow_presence`
+  - 70: `right elbow_x`
+  - 71: `right elbow_y`
+  - 72: `right elbow_z`
+  - 73: `right elbow_visibility`
+  - 74: `right elbow_presence`
+  - 75: `left wrist_x`
+  - 76: `left wrist_y`
+  - 77: `left wrist_z`
+  - 78: `left wrist_visibility`
+  - 79: `left wrist_presence`
+  - 80: `right wrist_x`
+  - 81: `right wrist_y`
+  - 82: `right wrist_z`
+  - 83: `right wrist_visibility`
+  - 84: `right wrist_presence`
+  - 85: `left pinky_x`
+  - 86: `left pinky_y`
+  - 87: `left pinky_z`
+  - 88: `left pinky_visibility`
+  - 89: `left pinky_presence`
+  - 90: `right pinky_x`
+  - 91: `right pinky_y`
+  - 92: `right pinky_z`
+  - 93: `right pinky_visibility`
+  - 94: `right pinky_presence`
+  - 95: `left index_x`
+  - 96: `left index_y`
+  - 97: `left index_z`
+  - 98: `left index_visibility`
+  - 99: `left index_presence`
+  - 100: `right index_x`
+  - 101: `right index_y`
+  - 102: `right index_z`
+  - 103: `right index_visibility`
+  - 104: `right index_presence`
+  - 105: `left thumb_x`
+  - 106: `left thumb_y`
+  - 107: `left thumb_z`
+  - 108: `left thumb_visibility`
+  - 109: `left thumb_presence`
+  - 110: `right thumb_x`
+  - 111: `right thumb_y`
+  - 112: `right thumb_z`
+  - 113: `right thumb_visibility`
+  - 114: `right thumb_presence`
+  - 115: `left hip_x`
+  - 116: `left hip_y`
+  - 117: `left hip_z`
+  - 118: `left hip_visibility`
+  - 119: `left hip_presence`
+  - 120: `right hip_x`
+  - 121: `right hip_y`
+  - 122: `right hip_z`
+  - 123: `right hip_visibility`
+  - 124: `right hip_presence`
+  - 125: `left knee_x`
+  - 126: `left knee_y`
+  - 127: `left knee_z`
+  - 128: `left knee_visibility`
+  - 129: `left knee_presence`
+  - 130: `right knee_x`
+  - 131: `right knee_y`
+  - 132: `right knee_z`
+  - 133: `right knee_visibility`
+  - 134: `right knee_presence`
+  - 135: `left ankle_x`
+  - 136: `left ankle_y`
+  - 137: `left ankle_z`
+  - 138: `left ankle_visibility`
+  - 139: `left ankle_presence`
+  - 140: `right ankle_x`
+  - 141: `right ankle_y`
+  - 142: `right ankle_z`
+  - 143: `right ankle_visibility`
+  - 144: `right ankle_presence`
+  - 145: `left heel_x`
+  - 146: `left heel_y`
+  - 147: `left heel_z`
+  - 148: `left heel_visibility`
+  - 149: `left heel_presence`
+  - 150: `right heel_x`
+  - 151: `right heel_y`
+  - 152: `right heel_z`
+  - 153: `right heel_visibility`
+  - 154: `right heel_presence`
+  - 155: `left foot index_x`
+  - 156: `left foot index_y`
+  - 157: `left foot index_z`
+  - 158: `left foot index_visibility`
+  - 159: `left foot index_presence`
+  - 160: `right foot index_x`
+  - 161: `right foot index_y`
+  - 162: `right foot index_z`
+  - 163: `right foot index_visibility`
+  - 164: `right foot index_presence`
 
 
 ## Examples
