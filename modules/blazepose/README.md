@@ -7,9 +7,14 @@ https://arxiv.org/abs/2006.10204
 ## Options
 
 - `model` (`list`):  identifier of the model to choose:
-  - `light`
   - `full`
+  - `light`
   - `heavy`
+- `mode` (`list`): the media pipe [running_mode](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)
+  - `image`
+  - `video`
+  - `live_stream`
+- `repeat_last` (`bool`) : `True`,  If set to true frames where no skeleton is detected will be filled with the last detected skeleton. If set to false all skeleton points will be set to 0 if no skeleton is detected.
 
 ## IO
 Explanation of inputs and outputs as specified in the trainer file:
