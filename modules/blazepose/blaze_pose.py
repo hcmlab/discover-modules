@@ -1,4 +1,4 @@
-"""BlaePose Module
+"""BlazePose Module
 Author: Dominik Schiller <dominik.schiller@uni-a.de>
 Date: 30.10.2024
 """
@@ -126,7 +126,7 @@ class BlazePose(Processor):
 
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
             if self.running_mode == mp.tasks.vision.RunningMode.IMAGE:
-                self.detections.append((self.detector.detect(mp_image), 0))
+                self.detections.append((self.detector.detect(mp_image), i))
             else:
                 #time_stamp_ms = int((i) * 1000 / data_object.meta_data.sample_rate)
                 time_stamp_ms = i
