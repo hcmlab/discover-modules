@@ -136,8 +136,8 @@ class BlazePose(Processor):
                     self.detector.detect_async(mp_image, time_stamp_ms)
 
             # ### TODO: DEBUG ONLY ###
-            if i == 500:
-                break
+            # if i == 500:
+            #     break
 
         if self.running_mode == mp.tasks.vision.RunningMode.LIVE_STREAM:
             # Wait for async tasks to finish
