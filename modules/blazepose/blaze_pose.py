@@ -32,14 +32,18 @@ from discover_utils.utils.string_utils import string_to_bool
 from discover_utils.data.stream import SSIStream
 
 INPUT_ID = "video"
-OUTPUT_ID = "pose"
+OUTPUT_ID_SSI = "pose_ssi"
+OUTPUT_ID_MP = "pose_mp"
 
-MEDIA_TYPE_ID_BB = "stream:SSIStream:feature;body;skeleton;blazepose"
+MEDIA_TYPE_ID_POSE_SSI = "stream:SSIStream:feature;body;skeleton;blazepose_ssi"
+MEDIA_TYPE_ID_POSE_MP = "stream:SSIStream:feature;body;skeleton;blazepose_mp"
 
 _default_options = {
     "repeat_last": True,
     "running_mode": "image",
-    "model": "full"
+    "model": "full",
+    "ssi_format": True,
+    "mp_format": True
 }
 
 _dl = get_dim_labels()
@@ -72,6 +76,8 @@ class BlazePose(Processor):
         self.num_poses = 1
         self.running_mode = self.get_running_mode(self.options["running_mode"])
         self.model = self.options["model"]
+        self.output_ssi = self.options["ssi_format"]
+        self.output_mp = self.options["mp_format"]
         print(f"Running mode: {self.running_mode}")
 
         # Only relevant if used in live_stream mode
@@ -100,78 +106,6 @@ class BlazePose(Processor):
         )
         self.detector = vision.PoseLandmarker.create_from_options(options)
 
-    def _post_process_sample(self, x):
-        return x
-        # Convert to numpy and remove z axis, presence and visability
-        out = []
-        for frame in x:
-            frame_np = []
-            for landmark in frame:
-                frame_np.extend([landmark.y, landmark.x])
-
-        # # Move to cpu
-        # x = x.cpu().numpy()
-        #
-        # # No faces
-        # if x.shape[0] == 0:
-        #     return np.zeros((self.num_faces, 17))
-        #
-        # # Too few faces
-        # elif x.shape[0] < self.num_faces:
-        #     pred = np.concatenate(
-        #         (x, np.zeros((self.num_faces - x.shape[0], 17)))
-        #     )
-        #
-        # else:
-        #     # Too many faces
-        #     # sort by confidence and get num_faces
-        #     idx = np.argsort(x[:, 16])[-self.num_faces:]
-        #     pred = x[idx]
-        #
-        # # Adapt aspect ratio to original image
-        # if self.force_square_ar:
-        #
-        #     meta_data = self.session_manager.input_data[INPUT_ID].meta_data
-        #     orig_height = meta_data.sample_shape[-3]
-        #     orig_width = meta_data.sample_shape[-2]
-        #
-        #     h_gt_w = orig_height > orig_width
-        #
-        #     # Stretch width
-        #     if h_gt_w:
-        #         # Ratio height to width
-        #         ratio = orig_height / orig_width
-        #
-        #         # Difference of the current bounding box width to the scaled bounding box width
-        #         bb_width = abs(pred[:, 3] - pred[:, 1])
-        #         diff_x_scaled = bb_width * ratio - bb_width
-        #
-        #         # Adding half the distance to the end and abstract half distance from the beginning
-        #         pred[:, 1] = pred[:, 1] - diff_x_scaled / 2
-        #         pred[:, 3] = pred[:, 3] + diff_x_scaled / 2
-        #
-        #     # Stretch height
-        #     else:
-        #         # Ratio width to height
-        #         ratio = orig_width / orig_height
-        #
-        #         # Difference of the current bounding box height to the scaled bounding box height
-        #         bb_height = abs(pred[:, 2] - pred[:, 0])
-        #         diff_y_scaled = bb_height * ratio - bb_height
-        #
-        #         # Adding half the distance to the end and abstract half distance from the beginning
-        #         pred[:, 0] = pred[:, 0] - diff_y_scaled / 2
-        #         pred[:, 2] = pred[:, 2] + diff_y_scaled / 2
-        #
-        #     h_bb = abs(pred[:, 2] - pred[:, 0]) * orig_height
-        #     w_bb = abs(pred[:, 3] - pred[:, 1]) * orig_width
-        #
-        #     # Maximum difference between length and width in pixels to still be considered square. Compensates for rounding errors.
-        #     max_ar_diff = 1
-        #     if abs(int(h_bb) - int(w_bb)) > max_ar_diff:
-        #         raise ValueError(f'Assertion Error: Bounding box aspect ratio is forced to be 1:1 but {h_bb / w_bb} ')
-        #
-        # return pred
 
     def process_data(self, ds_manager) -> list:
         self.session_manager = self.get_session_manager(ds_manager)
@@ -202,8 +136,8 @@ class BlazePose(Processor):
                     self.detector.detect_async(mp_image, time_stamp_ms)
 
             # ### TODO: DEBUG ONLY ###
-            # if i == 500:
-            #     break
+            if i == 500:
+                break
 
         if self.running_mode == mp.tasks.vision.RunningMode.LIVE_STREAM:
             # Wait for async tasks to finish
@@ -271,9 +205,6 @@ class BlazePose(Processor):
 
         def unpack_landmarks(pl: NormalizedLandmark):
             return pl.x, pl.y, pl.z, pl.visibility, pl.presence
-
-        def diff_landmarks(x_1, y_1, z_1, visibility_1, presence_1, x_2, y_2, z_2, visibility_2, presence_2):
-            return abs(x_1-x_2), abs(y_1-y_2),  abs(z_1-z_2), abs(visibility_1-visibility_2), abs(presence_1-presence_2)
 
         def normalize_landmarks(x,y,z,visibility,presence):
             return (x*2)-1, ((1-y)*2)-1, z, visibility, presence
@@ -391,45 +322,67 @@ class BlazePose(Processor):
 
         return skeletons
 
+    def create_stream(self, stream_data, template, input_stream, dim_labels, media_type):
+        return SSIStream(
+            data=np.asarray(stream_data).astype(template.meta_data.dtype),
+            sample_rate=1
+            if isinstance(input_stream, Image)
+            else input_stream.meta_data.sample_rate,
+            dim_labels=dim_labels,
+            media_type=media_type,
+            custom_meta={
+                "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}",
+                "num" : str(self.num_poses),
+                "normalized" : "true"
+            },
+            role=template.meta_data.role,
+            dataset=template.meta_data.dataset,
+            name=template.meta_data.name,
+            session=template.meta_data.session,
+        )
 
     def to_output(self, data: list) -> dict:
-        ssi_skeleton_stream_data = []
-        for frame in data:
-            ssi_skels = self.convert_to_ssi_skeleton(frame)
-            tmp_skels_ = []
-            for skel in ssi_skels:
-                tmp_skels_.append(skel.to_numpy())
 
-            ssi_skeleton_stream_data.append(np.hstack(tmp_skels_))
+        if True:
+            ssi_skeleton_stream_data = []
+            for frame in data:
+                ssi_skels = self.convert_to_ssi_skeleton(frame)
+                tmp_skels_ = []
+                for skel in ssi_skels:
+                    tmp_skels_.append(skel.to_numpy())
 
+                ssi_skeleton_stream_data.append(np.hstack(tmp_skels_))
 
-        def create_stream(stream_data, template, input_stream, dim_labels, media_type):
-            return SSIStream(
-                data=np.asarray(stream_data).astype(template.meta_data.dtype),
-                sample_rate=1
-                if isinstance(input_stream, Image)
-                else input_stream.meta_data.sample_rate,
-                dim_labels=dim_labels,
-                media_type=media_type,
-                custom_meta={
-                    "size": f"{input_stream.meta_data.sample_shape[-2]}:{input_stream.meta_data.sample_shape[-3]}",
-                    "num" : str(self.num_poses),
-                    #"name" : "skeleton",
-                    "normalized" : "true"
-                },
-                role=template.meta_data.role,
-                dataset=template.meta_data.dataset,
-                name=template.meta_data.name,
-                session=template.meta_data.session,
+            self.session_manager.output_data_templates[OUTPUT_ID_SSI] = self.create_stream(
+                ssi_skeleton_stream_data,
+                self.session_manager.output_data_templates[OUTPUT_ID_SSI],
+                self.session_manager.input_data[INPUT_ID],
+                _dl,
+                MEDIA_TYPE_ID_POSE_SSI
             )
 
-
-        self.session_manager.output_data_templates[OUTPUT_ID] = create_stream(
-            ssi_skeleton_stream_data,
-            self.session_manager.output_data_templates[OUTPUT_ID],
+        if True:
+            mp_skeleton_stream_data = []
+            for frame in data:
+                mp_skels = []
+                for skel in frame.pose_landmarks:
+                    tmp_skel_ = []
+                    for landmark in skel:
+                        tmp_skel_.append(landmark.x)
+                        tmp_skel_.append(landmark.y)
+                        tmp_skel_.append(landmark.z)
+                        tmp_skel_.append(landmark.visibility)
+                        tmp_skel_.append(landmark.presence)
+                    mp_skels.append(np.asarray(tmp_skel_))
+                if not mp_skels:
+                    mp_skels = np.zeros(shape=(165,))
+                mp_skeleton_stream_data.append(np.hstack(mp_skels))
+            self.session_manager.output_data_templates[OUTPUT_ID_MP] = self.create_stream(
+            mp_skeleton_stream_data,
+            self.session_manager.output_data_templates[OUTPUT_ID_MP],
             self.session_manager.input_data[INPUT_ID],
             _dl,
-            MEDIA_TYPE_ID_BB,
+            MEDIA_TYPE_ID_POSE_MP
         )
 
         return self.session_manager.output_data_templates
@@ -482,7 +435,8 @@ if __name__ == "__main__":
     dotenv.load_dotenv()
     base_dir = Path(os.getenv("DISCOVER_DATA_DIR"))
     out_dir = Path(os.getenv("DISCOVER_TEST_DIR"))
-    stream_out = Path(out_dir / "blaze_pose_out.stream")
+    stream_out_ssi = Path(out_dir / "blaze_pose_out_ssi.stream")
+    stream_out_mp = Path(out_dir / "blaze_pose_out_mp.stream")
 
     running_mode = "live_stream"  # "video", "live_stream", "image"
 
@@ -491,7 +445,7 @@ if __name__ == "__main__":
     bp = BlazePose(
         model_io=None,
         trainer=bp_trainer,
-        opts={"running_mode": running_mode, "model" : "light"},
+        opts={"running_mode": running_mode, "model" : "heavy"},
     )
 
     if running_mode == "image":
@@ -504,15 +458,22 @@ if __name__ == "__main__":
             "uri": str(img_in),
         }
 
-        dd_output = {
+        dd_output_ssi = {
             "src": "file:stream",
             "type": "output",
-            "id": OUTPUT_ID,
-            "uri": str(stream_out),
+            "id": OUTPUT_ID_SSI,
+            "uri": str(stream_out_ssi),
+        }
+
+        dd_output_mp = {
+            "src": "file:stream",
+            "type": "output",
+            "id": OUTPUT_ID_SSI,
+            "uri": str(stream_out_mp),
         }
 
         # Create dataset from image
-        dm_image = DatasetManager([dd_input_image, dd_output])
+        dm_image = DatasetManager([dd_input_image, dd_output_ssi, dd_output_mp])
         dm_image.load()
 
         # Predict
@@ -545,15 +506,22 @@ if __name__ == "__main__":
             "uri": str(video_in),
         }
 
-        dd_output = {
+        dd_output_ssi = {
             "src": "file:stream",
             "type": "output",
-            "id": OUTPUT_ID,
-            "uri": str(stream_out),
+            "id": OUTPUT_ID_SSI,
+            "uri": str(stream_out_ssi),
+        }
+
+        dd_output_mp = {
+            "src": "file:stream",
+            "type": "output",
+            "id": OUTPUT_ID_MP,
+            "uri": str(stream_out_mp),
         }
 
         # Create dataset from image
-        dm_video = DatasetManager([dd_input_video, dd_output])
+        dm_video = DatasetManager([dd_input_video, dd_output_ssi, dd_output_mp])
         dm_video.load()
 
         # Predict
