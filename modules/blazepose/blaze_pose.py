@@ -148,22 +148,22 @@ class BlazePose(Processor):
                 print(f"Wait for last predictions to finish...")
                 time.sleep(1)
 
-            # Sort results according to time stamps
-            self.detections.sort(key=lambda tup: tup[1])
+        # Sort results according to time stamps
+        self.detections.sort(key=lambda tup: tup[1])
 
-            # Add missing frames
-            frame_idxs = [x[1] for x in self.detections]
-            detections_ = []
-            filler_landmarks = PoseLandmarkerResult([],[])
-            for idx in range(i):
-                if idx not in frame_idxs:
-                    detections_.append(filler_landmarks)
-                else:
-                    detections_.append(self.detections[idx])
-                    if self.repeat_last:
-                        filler_landmarks = self.detections[idx]
+        # Add missing frames
+        frame_idxs = [x[1] for x in self.detections]
+        detections_ = []
+        filler_landmarks = PoseLandmarkerResult([],[])
+        for idx in range(i):
+            if idx not in frame_idxs:
+                detections_.append(filler_landmarks)
+            else:
+                detections_.append(self.detections[idx])
+                if self.repeat_last:
+                    filler_landmarks = self.detections[idx]
 
-            self.detections = detections_
+        self.detections = detections_
 
 
             # for idx in range(i):
@@ -445,7 +445,7 @@ if __name__ == "__main__":
     bp = BlazePose(
         model_io=None,
         trainer=bp_trainer,
-        opts={"running_mode": running_mode, "model" : "heavy"},
+        opts={"running_mode": running_mode, "model" : "light"},
     )
 
     if running_mode == "image":
