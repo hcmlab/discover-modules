@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta backend="nova-server" category="Voice" frameStep="40ms" leftContext="960ms" rightContext="0" description="Calculate continuous emotions from speech" is_iterable="True">
+    <io type="input" id="audio" data="stream:Audio" default_value="audio" />
+    <io type="output" id="arousal" data="annotation:Continuous" default_value="arousal" />
+    <io type="output" id="dominance" data="annotation:Continuous" default_value="dominance" />
+    <io type="output" id="valence" data="annotation:Continuous" default_value="valence" />
+    <io type="output" id="embeddings" data="stream:SSIStream" default_value="embeddings" />
+
+    <uri id="model" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Femow2v&amp;files=w2v2-L-robust-12.zip" hash="5b30e54052e0d022bfffdecc78db0ef35111dfc757c452ba768c314d1170485b" tar="False" />
+</meta>
+<model create="EmoW2V" script="emow2v.py" optstr="{batch_size:STRING:250}"/>
+</trainer>
