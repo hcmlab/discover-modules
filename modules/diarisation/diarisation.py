@@ -31,6 +31,7 @@ class Diarisation(Processor):
         dd = self.current_session.data_description
         out_idx = [i for i,x in enumerate(dd) if  x['id'] == 'out'][0]
         dd_out = dd[out_idx]
+        origin, _, _, _ =  discover_utils.utils.request_utils.parse_src_tag(dd_out)
         for k, v in data.items():
             anno_data = [(x['from']*1000, x['to']*1000, x['name'], x['conf']) for x in v]
 
