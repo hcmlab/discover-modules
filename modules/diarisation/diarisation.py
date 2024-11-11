@@ -1,9 +1,17 @@
+""" Diarisation
+
+Author:
+    Tobias Hallmen <tobias.hallmen@uni-a.de>,
+    Dominik Schiller <dominik.schiller@uni-a.de>
+Date:
+    05.12.2023
+
+"""
+
 import os
+import discover_utils
 from discover_utils.interfaces.server_module import Processor
-
-REQUIREMENTS = [
-
-]
+from pathlib import Path
 
 class Diarisation(Processor):
     def __init__(self, *args, **kwargs):
@@ -22,7 +30,8 @@ class Diarisation(Processor):
         # (from, to, id/name, conf) ; id = 0 = SPEECH ; name = free text
         dd = self.current_session.data_description
         out_idx = [i for i,x in enumerate(dd) if  x['id'] == 'out'][0]
-        dd_out = dd.pop(out_idx)
+        dd_out = dd[out_idx]
+        origin, _, _, _ =  discover_utils.utils.request_utils.parse_src_tag(dd_out)
         for k, v in data.items():
             anno_data = [(x['from']*1000, x['to']*1000, x['name'], x['conf']) for x in v]
 
@@ -32,6 +41,12 @@ class Diarisation(Processor):
             dd_out_copy = copy.deepcopy(dd_out)
             dd_out_copy['role'] = k
             dd_out_copy['id'] = f'out_{k}'
+
+            # if out put is file type
+            if discover_utils.utils.request_utils.Origin.FILE == origin:
+                orig_uri = Path(dd_out_copy['uri'])
+                dd_out_copy['uri'] = orig_uri.with_name(f'{orig_uri.stem}_{k}{orig_uri.suffix}')
+
             dd.append(dd_out_copy)
 
             # TODO: remove workaround for empty annos once data structure is updated
