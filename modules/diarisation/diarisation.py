@@ -1,11 +1,17 @@
+""" Diarisation
+
+Author:
+    Tobias Hallmen <tobias.hallmen@uni-a.de>,
+    Dominik Schiller <dominik.schiller@uni-a.de>
+Date:
+    05.12.2023
+
+"""
+
 import os
 import discover_utils
 from discover_utils.interfaces.server_module import Processor
 from pathlib import Path
-
-REQUIREMENTS = [
-
-]
 
 class Diarisation(Processor):
     def __init__(self, *args, **kwargs):
