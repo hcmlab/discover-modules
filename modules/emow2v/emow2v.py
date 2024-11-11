@@ -153,7 +153,7 @@ class EmoW2V(Processor):
         # Embeddings
         output[OUTPUT_ID_EMBEDDINGS] = SSIStream(
             data=np.array(embeddings, SSINPDataType.FLOAT.value),
-            sample_rate=self.ds_iterator.stride,
+            sample_rate=1000 / self.ds_iterator.stride,
         )
 
         return output
