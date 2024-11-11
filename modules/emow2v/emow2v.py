@@ -6,16 +6,16 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import librosa
-from nova_utils.interfaces.server_module import Processor
-from nova_utils.utils.type_definitions import SSINPDataType
-from nova_utils.data.provider.dataset_iterator import DatasetIterator
-from nova_utils.utils.log_utils import log
-from nova_utils.utils.ssi_xml_utils import Trainer
+from discover_utils.interfaces.server_module import Processor
+from discover_utils.utils.type_definitions import SSINPDataType
+from discover_utils.data.provider.dataset_iterator import DatasetIterator
+from discover_utils.utils.log_utils import log
+from discover_utils.utils.ssi_xml_utils import Trainer
 from emow2v_source import EmotionModel
 from transformers import Wav2Vec2Processor
 from time import perf_counter
-from nova_utils.data.stream import SSIStream
-from nova_utils.data.annotation import ContinuousAnnotation, ContinuousAnnotationScheme
+from discover_utils.data.stream import SSIStream
+from discover_utils.data.annotation import ContinuousAnnotation, ContinuousAnnotationScheme
 
 
 import torch
