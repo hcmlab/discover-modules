@@ -10,8 +10,8 @@ dotenv.load_dotenv()
 
 base_dir = Path(os.getenv("DISCOVER_DATA_DIR"))
 out_dir = Path(os.getenv("DISCOVER_TEST_DIR"))
-stream_in_mp_fp = Path(out_dir / "blaze_pose_out_mp.stream")
-video_in_fp = Path(base_dir / "test_files" / "test_video.mp4")
+stream_in_mp_fp = Path(base_dir / "test_files" / "patient.pose_mp.stream")
+video_in_fp = Path(base_dir / "test_files" / "patient.video.crop.mp4")
 
 fh = FileHandler()
 video = fh.load(video_in_fp)
