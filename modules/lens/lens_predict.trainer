@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta  backend="nova-server" category="Awesome" description="Transforms a transcript using a LLM based on a derived task description" is_iterable="False">
+    <io type="input" id="transcript" data="annotation:Free" default_value="transcript" />
+    <io type="input" id="transcript_context" data="annotation:Free" default_value="transcript" />
+    <io type="output" id="output" data="annotation:Discrete" default_value="llm_predict" />
+</meta>
+<model create="LensPredict" script="lens_predict.py" optstr="{ip:STRING:127.0.0.1};{port:STRING:1337};{provider:STRING:ollama_chat};{model:STRING:llama2};{language:LIST:en,de};{turn_based_analysis:BOOL:True]"/>
+</trainer>
