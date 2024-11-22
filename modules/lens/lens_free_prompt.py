@@ -125,7 +125,7 @@ class LensFreePrompt(Processor):
 
         for i,d in enumerate(data):
             resp = self.predict_sample(d[2], prompt=prompt)
-            print(resp)
+            log(f'"{d[2]}" : {resp}')
             resp = resp.get('label', UNK)
             ret.append((d[0], d[1], resp, d[3]))
 
