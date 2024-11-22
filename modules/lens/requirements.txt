@@ -1,2 +1,2 @@
-hcai-nova-utils
+hcai-discover-utils
 pandas

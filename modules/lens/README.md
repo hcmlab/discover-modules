@@ -15,8 +15,8 @@ Each sample of the input is processed using this information.
 - `provider` (`str`) : `ollama_chat`, The model provider
 - `model` (`str`) : `llama2`,  The llm model to use
 - `language` (`str`) : `en`,`de`,  The language in which the instructions are written
-- `turn_based_analysis` (`bool`) : `True`, If set to true speaking the main transcript and the context transcript will be aggregated into speaking turn pairs. 
-If set to false only the main transcript will be processed in single segments.
+- `turn_based_analysis` (`bool`) : `False`, If set to false the main transcript will be processed segment by segment. If set to true the main transcript and the context transcript will be aggregated into speaking turn pairs. This can be useful to analyze interactions in a dialogue.  
+
 
 
 ### IO
@@ -24,6 +24,7 @@ Explanation of inputs and outputs as specified in the trainer file:
 
 ### Input
 - `transcript` (`FreeAnnotation`): The input text to analyze
+- `transcript_context` (`FreeAnnotation`): A second transcript to provide context information for the main transcript. Only used when "turn_based_analysis" is set to true.
   
 ### Output
 The output of the model are three continuous annotations:
@@ -31,16 +32,16 @@ The output of the model are three continuous annotations:
 
 ## Lens Free Prompt
 
-This module iterates samplewise over the input and uses the system prompt and the user prompt to process it. 
-
+This module iterates samplewise over the input and uses the system prompt and the user prompt to process it.
+ 
 ### Options
 
 - `ip` (`str`) : `127.0.0.1`, The ip address to reach Nova Assistant
 - `port` (`str`) : `1337`, The port Nova Assistant is listening on
 - `provider` (`str`) : `ollama_chat`, The model provider
 - `model` (`str`) : `llama2`,  The llm model to use
-- `system_prompt` (`str`) : ``,  The system prompt to pass to the llm
-- `prompt` (`str`) : ``,  The user prompt to pass to the llm
+- `prompt` (`str`) : ``,  The prompt to pass to the llm
+- `group_turns` (`bool`) : `False`, If set to false the main transcript will be processed segment by segment. If set to true the main transcript and the context transcript will be aggregated into speaking turn pairs. This can be useful to analyze interactions in a dialogue.  
 
 
 ### IO
@@ -49,6 +50,7 @@ Explanation of inputs and outputs as specified in the trainer file:
 
 ### Input
 - `transcript` (`FreeAnnotation`): The input text to analyze
+- `transcript_context` (`FreeAnnotation`): A second transcript to provide context information for the main transcript. Only used when "turn_based_analysis" is set to true.
 
 ### Output
 The output of the model are three continuous annotations:
@@ -58,27 +60,6 @@ The output of the model are three continuous annotations:
 
 ### Request
 
-```python
-import requests
-import json
 
-payload = {
-  "jobID" : "lens",
-  "data": json.dumps([
-    {"src":"db:annotation:free", "type":"input", "id":"transcript", "role":"testrole", "name" : "transcription"},
-    {"src":"db:annotation:discrete", "type":"output",  "id":"transcript", "role":"testrole", "name" : "transcription"},
-  ]),
-  "trainerFilePath": "modules\\lens\\lens_predictor.trainer",
- "frame_size": "40ms",
- "left_context": "960ms"
-}
-
-
-url = 'http://127.0.0.1:8080/process'
-headers = {'Content-type': 'application/x-www-form-urlencoded'}
-x = requests.post(url, headers=headers, data=payload)
-print(x.text)
-
-```
-
+{'system_prompt': '', 'provider': 'ollama', 'model': 'mistral-nemo', 'message': 'translate the provided text to english. Respond in JSON. Only use one key called "label".. \n """therapeut:  Okay, ja Frau Hilmann, das ist unsere erste Sitzung seit den Feiertagen. Die Feiertage sind etwas ganz Besonderes und passiert meistens relativ viel. Für manche ist es auch gar nicht so einfach, die Feiertage zu überschleben. Wie war es denn so bei Ihnen? \n patient:  Also eigentlich habe ich mich ziemlich auf Weihnachten gefreut, weil Weihnachten... ...viele schöne Sachen und ja, ich freue mich meine Familie zu sehen, die... ...weil sie so weit weg wohnt, sehen wir uns ja auch nicht so häufig.""". Value:\n', 'temperature': 0, 'resp_format': 'json', 'max_new_tokens': 128, 'enforce_determinism': True, 'stream': True}
 ### License

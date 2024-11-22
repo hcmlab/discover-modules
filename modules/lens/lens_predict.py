@@ -11,7 +11,7 @@ import templates
 
 _default_options = {
     'language' : 'en',
-    'turn_based_analysis' : False,a
+    'group_turns' : False,
 }
 _dim_labels = [
     "sentiment",
@@ -24,7 +24,7 @@ ATTRIBUTES = ['Explanation']
 UNK = '-'
 
 
-class LensPredict(Processor):
+class LensFreePrompt(Processor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.options = _default_options | self.options
@@ -35,7 +35,7 @@ class LensPredict(Processor):
         self.system_prompt = self.options.get('system_prompt')
         self.prompt = self.options.get('prompt')
         self.lang = self.options.get('language')
-        self.turn_based_analysis = self.options.get('turn_based_analysis')
+        self.group_turns = self.options.get('group_turns')
 
     def preprocess_sample(self, sample):
         return sample
@@ -86,17 +86,19 @@ class LensPredict(Processor):
         system_prompt = '\n'.join([system_prompt, description, examples, response_schema_json])
 
         data_object = self.session_manager.input_data[INPUT_ID]
-        data_object_context = self.session_manager.input_data[INPUT_ID_CONTEXT]
 
         data = data_object.data
-        data_context = data_object_context.data
 
         ret = []
         attributes = {
             a: [] for a in ATTRIBUTES
         }
 
-        if self.turn_based_analysis:
+        if self.group_turns:
+
+            data_object_context = self.session_manager.input_data[INPUT_ID_CONTEXT]
+            data_context = data_object_context.data
+
             import pandas as pd
             transcript = pd.core.frame.DataFrame(data)
             context = pd.core.frame.DataFrame(data_context)
@@ -175,45 +177,56 @@ if __name__ == '__main__':
     from discover_utils.data.provider.dataset_iterator import DatasetIterator
     from discover_utils.utils.ssi_xml_utils import Trainer
 
-    env = dotenv.load_dotenv(r'../.env')
+    env = dotenv.load_dotenv(r'../../.env')
     IP = os.getenv("NOVA_IP", "")
     PORT = int(os.getenv("NOVA_PORT", 0))
     USER = os.getenv("NOVA_USER", "")
     PASSWORD = os.getenv("NOVA_PASSWORD", "")
     DATA_DIR = Path(os.getenv("NOVA_DATA_DIR", None))
-    ASSISTANT_IP = os.getenv("NOVA_ASSISTANT_IP", "")
-    ASSISTANT_PORT = os.getenv("NOVA_ASSISTANT_PORT", 0)
+    LENS_IP = os.getenv("LENS_IP", "")
+    LENS_PORT = os.getenv("LENS_PORT", 0)
+    DISCOVER_OUT_DIR = Path(os.getenv("DISCOVER_OUT_DIR", None))
 
     # Trainer
-    na_trainer = Trainer()
-    na_trainer.load_from_file("nova_assistant_predict.trainer")
+    lens_trainer = Trainer()
+    lens_trainer.load_from_file("lens_predict.trainer")
     opts = {
-        'ip': ASSISTANT_IP,
-        'port': ASSISTANT_PORT,
+        'ip': LENS_IP,
+        'port': LENS_PORT,
         'model': 'llama2',
         'provider': 'ollama'
     }
-    na = LensPredict(model_io=None, opts=opts, trainer=na_trainer)
+    lens = LensFreePrompt(model_io=None, opts=opts, trainer=lens_trainer)
 
     # Inputs
     transcript = {
         "src": "db:annotation:Free",
         "scheme": "transcript",
-        "role": "testrole2",
-        "annotator": "baurtobi",
+        "role": "patient",
+        "annotator": "whisperx_segment",
         "type": "input",
         "id": INPUT_ID,
-
     }
+
+    transcript_ctx = {
+        "src": "db:annotation:Free",
+        "scheme": "transcript",
+        "role": "therapeut",
+        "annotator": "whisperx_segment",
+        "type": "input",
+        "id": INPUT_ID_CONTEXT
+    }
+
+    # Output
 
     # Output
     sentiment = {
         "src": "db:annotation:Discrete",
-        "scheme": "emotion_categorical",
-        "role": "testrole2",
-        "annotator": "baurtobi",
+        "scheme": "sentiment",
+        "role": "patient",
+        "annotator": "schildom",
         "type": "output",
-        "id": OUTPUT_ID,
+        "id": OUTPUT_ID
     }
 
     ctx = {
@@ -227,13 +240,13 @@ if __name__ == '__main__':
     }
 
     ds_iterator = DatasetIterator(
-        data_description=[transcript, sentiment],
+        data_description=[transcript, transcript_ctx, sentiment],
         source_context=ctx,
-        dataset='test',
-        frame_size=na_trainer.meta_frame_step,
-        left_context=na_trainer.meta_left_ctx,
-        session_names=['01_AffWild2_video1']
+        dataset='therapai',
+        frame_size=lens_trainer.meta_frame_step,
+        left_context=lens_trainer.meta_left_ctx,
+        session_names=['88Y8_S03']
     )
     ds_iterator.load()
-    emotions = na.process_data(ds_iterator)
-    output = na.to_output(emotions)
+    emotions = lens.process_data(ds_iterator)
+    output = lens.to_output(emotions)
