@@ -6,5 +6,5 @@
     <io type="input" id="transcript_context" data="annotation:Free" default_value="" />
     <io type="output" id="output" data="annotation:Free" default_value="llm_transform" />
 </meta>
-<model create="LensFreePrompt" script="lens_free_prompt.py" optstr="{ip:STRING:127.0.0.1};{port:STRING:1339};{provider:STRING:ollama_chat};{model:STRING:llama3.2};{prompt:STRING:};{group_turns:BOOL:False]"/>
+<model create="LensFreePrompt" script="lens_free_prompt.py" optstr="{ip:STRING:127.0.0.1};{port:STRING:1339};{provider:STRING:ollama_chat};{model:STRING:llama3.2};{prompt:STRING:};{group_turns:BOOL:False}"/>
 </trainer>
