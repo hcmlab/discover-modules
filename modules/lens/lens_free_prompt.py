@@ -49,7 +49,6 @@ class LensFreePrompt(Processor):
         }
         with requests.post('http://' + self.ip + ':' + self.port + '/assist', json=request) as response:
             resp = response.content
-
         try:
             resp = json.loads(resp.decode('UTF-8'))
         except Exception as e:
@@ -125,7 +124,7 @@ class LensFreePrompt(Processor):
 
         for i,d in enumerate(data):
             resp = self.predict_sample(d[2], prompt=prompt)
-            log(f'"{d[2]}" : {resp}')
+            log(str(f'"{d[2]}" : {str(resp)}'.encode(encoding='UTF-8',errors='strict')))
             resp = resp.get('label', UNK)
             ret.append((d[0], d[1], resp, d[3]))
 
