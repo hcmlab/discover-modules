@@ -1,6 +1,6 @@
-# Nova Assistant 
+# LENS
 
-This model uses the Nova Assistant project to predict data samples with the help of a large language model.
+This module uses LENS to predict data samples with the help of a large language model.
 
 * https://github.com/hcmlab/lens
 
