@@ -27,6 +27,18 @@ speaker diarization.
  
 - `batch_size`: how many samples to process at once, increases speed but also (V)RAM consumption
 
+
+### IO
+Explanation of inputs and outputs as specified in the trainer file:
+
+### Input
+- `audio` (`Audio`): The input audio to transcribe
+  
+### Output
+The output of the model:
+- `transcript` (`FreeAnnotation`): The transcription
+
+
 ## Examples
 
 ### Request
