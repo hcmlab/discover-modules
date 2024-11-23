@@ -6,5 +6,5 @@
     <io type="input" id="transcript_context" data="annotation:Free" default_value="transcript" />
     <io type="output" id="output" data="annotation:Discrete" default_value="llm_predict" />
 </meta>
-<model create="LensPredict" script="lens_predict.py" optstr="{ip:STRING:127.0.0.1};{port:STRING:1337};{provider:STRING:ollama_chat};{model:STRING:llama2};{language:LIST:en,de};{group_turns:BOOL:False]"/>
+<model create="LensPredict" script="lens_predict.py" optstr="{ip:STRING:127.0.0.1};{port:STRING:1337};{provider:STRING:ollama_chat};{model:STRING:llama2};{language:LIST:en,de};{group_turns:BOOL:False}"/>
 </trainer>
