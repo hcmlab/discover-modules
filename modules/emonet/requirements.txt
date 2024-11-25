@@ -1,0 +1,4 @@
+hcai-discover-utils
+torch
+torchvision
+opencv-python
