@@ -50,7 +50,7 @@ class LensPredict(Processor):
             # 'top_k': 1,
             # "top_p" : 0.01
             'resp_format': '',
-            'max_new_tokens': 2048,
+            'max_new_tokens': 512,
             'enforce_determinism': True,
             'stream': False
         }
