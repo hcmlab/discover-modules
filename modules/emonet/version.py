@@ -1,4 +1,4 @@
-""" Driver Emotion
+""" Emonet
 
 Author:
     Dominik Schiller <dominik.schiller@uni-a.de>
