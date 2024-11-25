@@ -1,5 +1,4 @@
-numpy<2
-hcai-nova-utils
-torch==2.0.1
-torchvision==0.15.2
+hcai-discover-utils
+torch
+torchvision
 opencv-python

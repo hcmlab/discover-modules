@@ -10,16 +10,16 @@ import torchvision
 
 torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
-from nova_utils.data.annotation import (
+from discover_utils.data.annotation import (
     DiscreteAnnotationScheme,
     ContinuousAnnotationScheme,
 )
-from nova_utils.data.static import Image
-from nova_utils.interfaces.server_module import Processor
-from nova_utils.utils.anno_utils import resample
-from nova_utils.utils.log_utils import log
+from discover_utils.data.static import Image
+from discover_utils.interfaces.server_module import Processor
+from discover_utils.utils.anno_utils import resample
+from discover_utils.utils.log_utils import log
 from emonet_source import _EmoNet
-from nova_utils.utils.cache_utils import get_file
+from discover_utils.utils.cache_utils import get_file
 from data_augmentor import DataAugmentor
 
 INPUT_ID = "video"
@@ -220,8 +220,8 @@ if __name__ == "__main__":
         plt.show()
 
     PYTORCH_ENABLE_MPS_FALLBACK = 1
-    from nova_utils.utils.ssi_xml_utils import Trainer
-    from nova_utils.data.provider.data_manager import DatasetManager
+    from discover_utils.utils.ssi_xml_utils import Trainer
+    from discover_utils.data.provider.data_manager import DatasetManager
 
 
     en_trainer = Trainer()
