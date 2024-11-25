@@ -46,7 +46,7 @@ _label_map = {
     "7": "Contempt",
 }
 
-transform_image = v2.Compose([torchvision.transforms.v2.ConvertDtype()])
+transform_image = v2.Compose([torchvision.transforms.v2.ConvertImageDtype()])
 
 
 def _blaze_face_converter(detection: np.ndarray, img_shape: tuple):
