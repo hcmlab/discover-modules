@@ -24,7 +24,7 @@ ATTRIBUTES = ['Explanation']
 UNK = '-'
 
 
-class LensFreePrompt(Processor):
+class LensPredict(Processor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.options = _default_options | self.options
@@ -51,7 +51,8 @@ class LensFreePrompt(Processor):
             # "top_p" : 0.01
             'resp_format': 'json',
             'max_new_tokens': 1024,
-            'enforce_determinism': True
+            'enforce_determinism': True,
+            'stream': False
         }
         with requests.post('http://' + self.ip + ':' + self.port + '/assist', json=request) as response:
             resp = response.content

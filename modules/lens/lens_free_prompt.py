@@ -1,7 +1,6 @@
 ﻿import numpy as np
 import requests
 from discover_utils.interfaces.server_module import Processor
-from discover_utils.data.annotation import DiscreteAnnotation
 from discover_utils.utils.log_utils import log
 import json
 
@@ -45,7 +44,8 @@ class LensFreePrompt(Processor):
             'resp_format' : 'json',
             'max_new_tokens': 128,
             'enforce_determinism': True,
-            'stream': True
+            'stream': False,
+            'num_ctx': 10000,
         }
         with requests.post('http://' + self.ip + ':' + self.port + '/assist', json=request) as response:
             resp = response.content
