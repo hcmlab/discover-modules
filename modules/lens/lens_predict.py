@@ -49,8 +49,8 @@ class LensPredict(Processor):
             'temperature': 0,
             # 'top_k': 1,
             # "top_p" : 0.01
-            'resp_format': 'json',
-            'max_new_tokens': 1024,
+            'resp_format': '',
+            'max_new_tokens': 2048,
             'enforce_determinism': True,
             'stream': False
         }
@@ -148,7 +148,7 @@ class LensPredict(Processor):
 
         for i, d in enumerate(data):
             resp = self.process_sample(message=templates.message_template(self.lang, d[2], main_role=main_role), system_prompt=system_prompt)
-            print(resp)
+            log(resp)
 
             label_candidates = [k for k, v in odt.annotation_scheme.classes.items() if v['name'] == resp.get('label')]
             if label_candidates:

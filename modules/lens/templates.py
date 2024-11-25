@@ -2,24 +2,20 @@
 def en_response_scheme_template():
     return """
     Respond in JSON. Your response should be in the following format:
-    ```json
     {
       "label": "The label you assigned to the text segment.",
       "confidence": "A float value on a continuous scale from 0.0 to 1.0 that indicates how confident you are in your prediction. 0.0 means your are just guessing and 1.0 means you are absolut certain.",
       "explanation": "Explain why you assigned the label to the input."
     }
-    ```
     """
 
 
 def de_response_scheme_template():
     return """
     Antworte in JSON. Die Antwort soll folgendermaßen strukturiert sein:
-    ```json
     {
-      "label": "Das Label, dass du einem Segment zuweist.",
+      "label": "Das Label, dass du einem Segment zuweist."
     }
-    ```
     """
 #"confidence": ""Ein Gleitkommawert auf einer kontinuierlichen Skala von 0.0 bis 1.0, der angibt, wie sicher Du dir bei deiner Vorhersage bist. 0.0 bedeutet, dass du nur rätst, und 1.0 bedeutet, dass Du dir absolut sicher bist.",
 #"explanation": "Erläutere, warum du dem Segment dieses Label zugewiesen hast.
