@@ -1,4 +1,0 @@
-numpy<2
-hcai-nova-utils
-opencv-python
-tensorflow==2.10.1

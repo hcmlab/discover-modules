@@ -22,9 +22,8 @@ class MultitaskMobileNetV2Model:
         }
 
         # Create the base pre-trained model
-        i = keras.layers.Input([self.input_width, self.input_height, self.input_channels], dtype = tf.uint8)
-        x = tf.cast(i, tf.float32)
-        x = keras.applications.mobilenet.preprocess_input(x)
+        i = keras.layers.Input(shape=[self.input_width, self.input_height, self.input_channels])#tf.uint8)
+        x = keras.applications.mobilenet.preprocess_input(i)
 
         base_model = keras.applications.MobileNetV2(
             input_tensor=x,

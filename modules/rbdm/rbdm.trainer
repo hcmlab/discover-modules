@@ -10,5 +10,5 @@
 
     <uri id="weights" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Frbdm_mt&amp;files=MobileNetV2_RMSE_E060_L10.8965_RMSE0.3812.h5" hash="" />
 </meta>
-<model create="RBDMMT" script="rbdm_mt.py" optstr="{batch_size:STRING:50}"/>
+<model create="RBDM" script="rbdm.py" optstr="{batch_size:STRING:50}"/>
 </trainer>

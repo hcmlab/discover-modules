@@ -6,15 +6,15 @@ import numpy as np
 # Add local dir to path for relative imports
 sys.path.insert(0, os.path.dirname(__file__))
 
-from rbdm_mt_source import MultitaskMobileNetV2Model
-from nova_utils.data.annotation import (
+from rbdm_source import MultitaskMobileNetV2Model
+from discover_utils.data.annotation import (
      DiscreteAnnotationScheme, ContinuousAnnotationScheme
 )
-from nova_utils.data.static import Image
-from nova_utils.interfaces.server_module import Processor
-from nova_utils.utils.anno_utils import resample
-from nova_utils.utils.cache_utils import get_file
-from nova_utils.utils.log_utils import log
+from discover_utils.data.static import Image
+from discover_utils.interfaces.server_module import Processor
+from discover_utils.utils.anno_utils import resample
+from discover_utils.utils.cache_utils import get_file
+from discover_utils.utils.log_utils import log
 
 
 INPUT_ID = "input_data"
@@ -49,7 +49,7 @@ def _get_low_confidence_detections(detection: np.ndarray, thresh=0.5):
     return np.where(detection[:,-1] < thresh)[0]
 
 
-class RBDMMT(Processor):
+class RBDM(Processor):
     chainable = False
 
     def __init__(self, *args, **kwargs):
@@ -132,7 +132,7 @@ class RBDMMT(Processor):
             if len(image_resized.shape) == 3:
                 image_resized = np.expand_dims(image_resized, 0)
 
-            pred = self.model(image_resized)
+            pred = self.model(image_resized.astype(np.float32))
 
             # Expression
             expression = pred[1].numpy()
@@ -209,8 +209,8 @@ if __name__ == "__main__":
         plt.show()
 
     PYTORCH_ENABLE_MPS_FALLBACK = 1
-    from nova_utils.utils.ssi_xml_utils import Trainer
-    from nova_utils.data.provider.data_manager import DatasetManager
+    from discover_utils.utils.ssi_xml_utils import Trainer
+    from discover_utils.data.provider.data_manager import DatasetManager
     import dotenv
     env = dotenv.load_dotenv(r'../.env')
     TEST_DIR = Path(os.getenv("TEST_DIR")) / 'emonet'
@@ -218,7 +218,7 @@ if __name__ == "__main__":
 
     en_trainer = Trainer()
     en_trainer.load_from_file("rbdm_mt.trainer")
-    rbdm = RBDMMT(model_io=None, opts={}, trainer=en_trainer)
+    rbdm = RBDM(model_io=None, opts={}, trainer=en_trainer)
 
     for img in TEST_DIR.glob('*.jpg'):
 

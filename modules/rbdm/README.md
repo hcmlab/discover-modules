@@ -44,7 +44,7 @@ import requests
 import json
 
 payload = {
-  "jobID" : "rbdm_mt",
+  "jobID" : "rbdm",
   "data": json.dumps([
     {"src":"file:stream:video", "type":"input", "id":"input_data", "uri":"path/to/my/video.mp4"},
     {"src":"file:stream:ssifeature:blazeface", "type":"input", "id":"face:bb", "uri":"path/to/my/bounding_boxes.stream"},
@@ -52,7 +52,7 @@ payload = {
     {"src":"file:annotation:continuous", "type":"output", "id":"valence",  "uri":"path/to/my/valence.annotation"},
     {"src":"file:annotation:continuous", "type":"output", "id":"arousal",  "uri":"path/to/my/arousal.annotation"},
   ]),
-  "trainerFilePath": "modules\\rbdm_multi_task\\rbdmmt.trainer",
+  "trainerFilePath": "modules\\rbdm\\rbdm.trainer",
 }
 
 

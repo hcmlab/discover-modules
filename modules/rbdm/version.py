@@ -1,4 +1,4 @@
-""" Driver Emotion
+""" Relevance-Based Data Masking
 
 Author:
     Dominik Schiller <dominik.schiller@uni-a.de>
