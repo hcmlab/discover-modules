@@ -1,3 +1,4 @@
 hcai-discover-utils
 opencv-python
-tensorflow
+keras
+torch

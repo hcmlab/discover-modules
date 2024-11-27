@@ -1,5 +1,7 @@
-import tensorflow as tf
-from tensorflow import keras
+import os
+os.environ['KERAS_BACKEND'] = 'torch'
+#os.environ['CUDA_VISIBLE_DEVICES'] = ''  # cpu only
+import keras as keras
 
 class MultitaskMobileNetV2Model:
     def __init__(
@@ -46,3 +48,7 @@ class MultitaskMobileNetV2Model:
         self.model = keras.Model(
             inputs=[i], outputs=[y0, y1], name="MobileNetV2_Multitask"
         )
+
+        # no grad
+        for layer in self.model.layers:
+            layer.trainable = False

@@ -135,7 +135,7 @@ class RBDM(Processor):
             pred = self.model(image_resized.astype(np.float32))
 
             # Expression
-            expression = pred[1].numpy()
+            expression = pred[1].cpu().numpy()
 
             # Handling rest class
             expression = np.concatenate((expression, np.zeros((len(expression),1))), axis=-1)
@@ -145,7 +145,7 @@ class RBDM(Processor):
             predictions[OUTPUT_ID_FE].append(expression)
 
             # Valence Arousal
-            va = pred[0].numpy()
+            va = pred[0].cpu().numpy()
 
             valence = va[:,0]
             valence[bb_low_conf] = self.no_face_value
