@@ -15,6 +15,7 @@ from discover_utils.interfaces.server_module import Processor
 from discover_utils.utils.anno_utils import resample
 from discover_utils.utils.cache_utils import get_file
 from discover_utils.utils.log_utils import log
+from data_augmentor import DataAugmentor
 
 
 INPUT_ID = "input_data"
@@ -45,7 +46,7 @@ def _blaze_face_converter(detection: np.ndarray, img_shape: tuple):
     xmax = detection[:, 3] * img_shape[1]
     return np.swapaxes(np.vstack([xmin, ymin, xmax, ymax]), 0, 1)
 
-def _get_low_confidence_detections(detection: np.ndarray, thresh=0.5):
+def _get_low_confidence_detections(detection: np.ndarray, thresh=0.8):
     return np.where(detection[:,-1] < thresh)[0]
 
 
@@ -74,6 +75,7 @@ class RBDM(Processor):
         self.img_width = 224
         self.img_height = 224
         self.zero_img = np.zeros((self.img_width, self.img_height, 3))
+        self.transform_image_shape = DataAugmentor(self.img_width, self.img_height)
         self.batch_size = self.options['batch_size']
         self.no_face_value = 0
 
@@ -115,6 +117,14 @@ class RBDM(Processor):
             bb_frame = face_bb[idxs]
             bb_low_conf = _get_low_confidence_detections(bb_frame)
             bb_frame = _blaze_face_converter(bb_frame, (orig_height, orig_width))
+            
+            # Predict zero if no face is found to keep predictions consistent
+            images_pp = [
+                self.transform_image_shape(img, bb)[0] if i not in bb_low_conf else self.zero_img
+                for i, img, bb in zip(range(len(bb_frame)), frame, bb_frame)
+            ]
+            
+            '''
             bb_frame = bb_frame.astype(int)
 
             image_cropped = [
@@ -133,6 +143,9 @@ class RBDM(Processor):
                 image_resized = np.expand_dims(image_resized, 0)
 
             pred = self.model(image_resized.astype(np.float32))
+            '''
+
+            pred = self.model(images_pp)#.astype(np.float32))
 
             # Expression
             expression = pred[1].cpu().numpy()
