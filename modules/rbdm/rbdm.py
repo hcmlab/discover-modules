@@ -46,7 +46,7 @@ def _blaze_face_converter(detection: np.ndarray, img_shape: tuple):
     xmax = detection[:, 3] * img_shape[1]
     return np.swapaxes(np.vstack([xmin, ymin, xmax, ymax]), 0, 1)
 
-def _get_low_confidence_detections(detection: np.ndarray, thresh=0.8):
+def _get_low_confidence_detections(detection: np.ndarray, thresh=0.5):
     return np.where(detection[:,-1] < thresh)[0]
 
 
@@ -115,7 +115,7 @@ class RBDM(Processor):
             # shape: (num_samples, height, width, num_channels)
             frame = data[idxs]
             bb_frame = face_bb[idxs]
-            bb_low_conf = _get_low_confidence_detections(bb_frame)
+            bb_low_conf = _get_low_confidence_detections(bb_frame, self._conf_thresh)
             bb_frame = _blaze_face_converter(bb_frame, (orig_height, orig_width))
             
             # Predict zero if no face is found to keep predictions consistent
@@ -145,7 +145,7 @@ class RBDM(Processor):
             pred = self.model(image_resized.astype(np.float32))
             '''
 
-            pred = self.model(images_pp)#.astype(np.float32))
+            pred = self.model(np.asarray(images_pp))#.astype(np.float32))
 
             # Expression
             expression = pred[1].cpu().numpy()
