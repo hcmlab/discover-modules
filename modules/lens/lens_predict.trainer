@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <trainer ssi-v="5">
 <info trained="true" seed="1234"/>
-<meta  backend="nova-server" category="Awesome" description="Transforms a transcript using a LLM based on a derived task description" is_iterable="False">
+<meta  backend="nova-server" category="Awesome" description="Transforms a transcript using a LLM based on a derived task description" is_iterable="False" enable_post_process="False">
     <io type="input" id="transcript" data="annotation:Free" default_value="transcript" />
     <io type="input" id="transcript_context" data="annotation:Free" default_value="transcript" />
     <io type="output" id="output" data="annotation:Discrete" default_value="llm_predict" />
