@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true"/>
+<meta backend="nova-server" frameStep="40ms" leftContext="0" rightContext="0" category="Emotion " description="Calculates categorical emotions and valence / arousal for facial expressions." is_iterable="False">
+    <io type="input" id="input_data" data="stream:Video" default_value="video" />
+    <io type="input" id="face_bb" data="stream:SSIStream:blazeface" default_value="face_bounding_box" />
+    <io type="output" id="expression" data="annotation:Discrete" default_value="emotion" />
+    <io type="output" id="valence" data="annotation:Continuous" default_value="valence" />
+    <io type="output" id="arousal" data="annotation:Continuous" default_value="arousal" />
+
+    <uri id="weights" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Frbdm_mt&amp;files=MobileNetV2_RMSE_E060_L10.8965_RMSE0.3812.h5" hash="" />
+</meta>
+<model create="RBDM" script="rbdm.py" optstr="{batch_size:STRING:50}"/>
+</trainer>
