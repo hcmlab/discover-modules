@@ -201,7 +201,6 @@ class RBDM(Processor):
         return self.session_manager.output_data_templates
 
 
-
 if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
@@ -225,65 +224,134 @@ if __name__ == "__main__":
     from discover_utils.utils.ssi_xml_utils import Trainer
     from discover_utils.data.provider.data_manager import DatasetManager
     import dotenv
-    env = dotenv.load_dotenv(r'../.env')
-    TEST_DIR = Path(os.getenv("TEST_DIR")) / 'emonet'
+    env = dotenv.load_dotenv(r'../../.env')
 
 
     en_trainer = Trainer()
-    en_trainer.load_from_file("rbdm_mt.trainer")
+    en_trainer.load_from_file("rbdm.trainer")
     rbdm = RBDM(model_io=None, opts={}, trainer=en_trainer)
 
-    for img in TEST_DIR.glob('*.jpg'):
 
-        bb_stream_file = img.with_name(img.stem + '_bb').with_suffix('.stream')
-        if not bb_stream_file.is_file():
-            print('No bounding box found for file {img}')
-            continue
+    test_images = False
+    test_video = True
 
-        # Inputs
-        dd_input_image = {
-            "src": "file:image",
-            "type": "input",
-            "id": INPUT_ID,
-            "uri": str(img),
-        }
+    if test_images:
+        TEST_DIR = Path(os.getenv("TEST_DIR")) / 'emonet'
+        for img in TEST_DIR.glob('*.jpg'):
 
-        dd_input_bb = {
-            "src": "file:stream",
-            "type": "input",
-            "id": INPUT_ID_BB,
-            "uri": str(bb_stream_file),
-        }
+            bb_stream_file = img.with_name(img.stem + '_bb').with_suffix('.stream')
+            if not bb_stream_file.is_file():
+                print('No bounding box found for file {img}')
+                continue
 
-        # Outputs
-        dd_output_fe = {
-            "src": "file:annotation:discrete",
-            "type": "output",
-            "id": OUTPUT_ID_FE,
-            "uri": str(img.parent / 'emonet_facial_expression.annotation')
-        }
+            # Inputs
+            dd_input_image = {
+                "src": "file:image",
+                "type": "input",
+                "id": INPUT_ID,
+                "uri": str(img),
+            }
 
-        # Outputs
-        dd_output_arousal = {
-            "src": "file:annotation:continuous",
-            "type": "output",
-            "id": OUTPUT_ID_AROUSAL,
-            "uri": str(img.parent / 'arousal.annotation')
-        }
+            dd_input_bb = {
+                "src": "file:stream",
+                "type": "input",
+                "id": INPUT_ID_BB,
+                "uri": str(bb_stream_file),
+            }
 
-        # Outputs
-        dd_output_valence = {
-            "src": "file:annotation:continuous",
-            "type": "output",
-            "id": OUTPUT_ID_VALENCE,
-            "uri": str(img.parent / 'valence.annotation')
-        }
+            # Outputs
+            dd_output_fe = {
+                "src": "file:annotation:discrete",
+                "type": "output",
+                "id": OUTPUT_ID_FE,
+                "uri": str(img.parent / 'emonet_facial_expression.annotation')
+            }
 
-        dm_image = DatasetManager([dd_input_image, dd_input_bb, dd_output_fe, dd_output_valence, dd_output_arousal])
-        dm_image.load()
-        data = rbdm.process_data(dm_image)
+            # Outputs
+            dd_output_arousal = {
+                "src": "file:annotation:continuous",
+                "type": "output",
+                "id": OUTPUT_ID_AROUSAL,
+                "uri": str(img.parent / 'arousal.annotation')
+            }
 
-        output = rbdm.to_output(data)
+            # Outputs
+            dd_output_valence = {
+                "src": "file:annotation:continuous",
+                "type": "output",
+                "id": OUTPUT_ID_VALENCE,
+                "uri": str(img.parent / 'valence.annotation')
+            }
 
-        image = rbdm.get_session_manager(dm_image).input_data[INPUT_ID]
-        plot_detections(image, data)
+            dm_image = DatasetManager([dd_input_image, dd_input_bb, dd_output_fe, dd_output_valence, dd_output_arousal])
+            dm_image.load()
+            data = rbdm.process_data(dm_image)
+
+            output = rbdm.to_output(data)
+
+            image = rbdm.get_session_manager(dm_image).input_data[INPUT_ID]
+            plot_detections(image, data)
+
+    if test_video:
+
+        TEST_DIR = Path(os.getenv("DISCOVER_TEST_DIR"))
+        DATA_DIR = Path(os.getenv("DISCOVER_DATA_DIR")) / 'affectnet'
+
+        for folder in [f'{x}_man_eval' for x in range(11)]:
+            OUT_DIR = Path(TEST_DIR / 'outputs' / 'affectnet' / folder)
+            if not OUT_DIR.is_dir():
+                OUT_DIR.mkdir(exist_ok=True, parents=True)
+
+            bb_stream_file = DATA_DIR / f'{folder}' / 'session.face_bounding_box.stream'
+            video_file = DATA_DIR / f'{folder}' / 'session.video.mp4'
+            if not bb_stream_file.is_file():
+                print('No bounding box found for file {img}')
+                continue
+
+            # Inputs
+            dd_input_video = {
+                "src": "file:stream:video",
+                "type": "input",
+                "id": INPUT_ID,
+                "uri": str(video_file),
+            }
+
+            dd_input_bb = {
+                "src": "file:stream",
+                "type": "input",
+                "id": INPUT_ID_BB,
+                "uri": str(bb_stream_file),
+            }
+
+            # Outputs
+            dd_output_fe = {
+                "src": "file:annotation:discrete",
+                "type": "output",
+                "id": OUTPUT_ID_FE,
+                "uri": str(OUT_DIR / 'emonet_facial_expression.annotation')
+            }
+
+            # Outputs
+            dd_output_arousal = {
+                "src": "file:annotation:continuous",
+                "type": "output",
+                "id": OUTPUT_ID_AROUSAL,
+                "uri": str(OUT_DIR / 'arousal.annotation')
+            }
+
+            # Outputs
+            dd_output_valence = {
+                "src": "file:annotation:continuous",
+                "type": "output",
+                "id": OUTPUT_ID_VALENCE,
+                "uri": str(OUT_DIR / 'valence.annotation')
+            }
+
+            dm_image = DatasetManager([dd_input_video, dd_input_bb, dd_output_fe, dd_output_valence, dd_output_arousal])
+            dm_image.load()
+            data = rbdm.process_data(dm_image)
+
+            output = rbdm.to_output(data)
+
+            image = rbdm.get_session_manager(dm_image).input_data[INPUT_ID]
+            plot_detections(image, data)
