@@ -1,0 +1,8 @@
+hcai-discover-utils
+transformers
+protobuf
+tiktoken
+sentencepiece
+tokenizers
+scipy
+torch
