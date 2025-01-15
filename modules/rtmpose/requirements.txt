@@ -1,2 +1,0 @@
-hcai-discover-utils
-mediapipe
