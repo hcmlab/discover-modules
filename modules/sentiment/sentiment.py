@@ -8,7 +8,7 @@ from discover_utils.utils.anno_utils import resample
 from scipy.special import softmax
 import torch
 
-_default_options = {}
+_default_options = {'model_path': "cardiffnlp/twitter-xlm-roberta-base-sentiment"}
 _dim_labels = [
     "sentiment",
 ]
@@ -27,13 +27,13 @@ class Sentiment(Processor):
 
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        self.model_path = f"cardiffnlp/twitter-xlm-roberta-base-sentiment"
+        #self.model_path = f"cardiffnlp/twitter-xlm-roberta-base-sentiment"
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-        self.config = AutoConfig.from_pretrained(self.model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.options['model_path'])
+        self.config = AutoConfig.from_pretrained(self.options['model_path'])
 
         # PT
-        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_path)
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.options['model_path'])
         self.model.to(self.device)
         #self.model.save_pretrained(self.model_path)
 
