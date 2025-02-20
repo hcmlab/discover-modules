@@ -1,0 +1,5 @@
+hcai-discover-utils
+pandas
+opencv-python
+gdown
+timm
