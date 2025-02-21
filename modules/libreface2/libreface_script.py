@@ -238,8 +238,8 @@ class LibreFace(Processor):
         with Pool() as p:
             images_aligned = list(p.imap(f, zip(images, face_landmarks)))
 
-        test = get_au_intensities_and_detect_aus_video(images_aligned, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
-        test2 = get_facial_expression_video(images_aligned, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
+        test = get_au_intensities_and_detect_aus_video(images_aligned, batch_size=self.batch_size, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
+        test2 = get_facial_expression_video(images_aligned, batch_size=self.batch_size, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
         '''
         images_preprocessed_encoded = [self.au_enc.run(['feature'], {'image': np.expand_dims(x, axis=0)}) for x in
                                        images_preprocessed]
@@ -254,6 +254,7 @@ class LibreFace(Processor):
         return np.concatenate(preds, axis=-1).squeeze(), np.array(images_aligned, dtype=np.uint8)
         '''
         test2 = test2.replace(emo2id).infer_objects(copy=False)
+        torch.cuda.empty_cache()
         return pd.concat([test[0], test[1], test2], axis=1).values, np.array(images_aligned, dtype=np.uint8)
 
     def process_data(self, ds_iterator) -> dict[str, np.ndarray]:
