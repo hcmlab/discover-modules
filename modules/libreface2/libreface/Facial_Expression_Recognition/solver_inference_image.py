@@ -20,8 +20,9 @@ class Facial_Expression_Dataset(data.Dataset):
 
     def __getitem__(self, index):
         image_path = self.images[index]
-        image_name = image_path
-        image = Image.open(image_name).resize((self.img_size[0], self.img_size[1]))
+        #image_name = image_path
+        #image = Image.open(image_name).resize((self.img_size[0], self.img_size[1]))
+        image = Image.fromarray(image_path).resize((self.img_size[0], self.img_size[1]))
         image = self.convert(image)
         image = self.transform(image)
 

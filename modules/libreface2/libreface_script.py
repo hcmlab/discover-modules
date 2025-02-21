@@ -9,22 +9,25 @@ import os
 import numpy as np
 import scipy.ndimage
 from PIL import Image
-#from multiprocess import Pool
+from multiprocess import Pool
 
 from discover_utils.interfaces.server_module import Processor
 from discover_utils.utils.log_utils import log
 from time import perf_counter
 
 from discover_utils.data.stream import SSIStream, Video
+from discover_utils.data.annotation import DiscreteAnnotation
 from discover_utils.utils.cache_utils import get_file, validate_file
 #import onnxruntime as ort
 
 import sys
 #sys.path.insert(0, __file__[:-3])  # <path>/libreface.py -> <path>/libreface for imports from libreface folder
 sys.path.insert(0, __file__[:-1-len(__file__.split('/')[-1])])  # <path>/libreface_script.py -> <path> for imports from <libreface> folder
-from libreface.AU_Recognition.inference import get_au_intensities_and_detect_aus
-from libreface.Facial_Expression_Recognition.inference import get_facial_expression
+from libreface.AU_Recognition.inference import get_au_intensities_and_detect_aus, get_au_intensities_and_detect_aus_video
+from libreface.Facial_Expression_Recognition.inference import get_facial_expression, get_facial_expression_video
 import torch
+import pandas as pd
+pd.set_option('future.no_silent_downcasting', True)
 
 
 def image_align(img, face_landmarks, output_size=256,  # their shared onnx models expect 224 instead of 256
@@ -131,15 +134,17 @@ def image_align(img, face_landmarks, output_size=256,  # their shared onnx model
 _default_options = {'batch_size': 256}
 INP_VID = "video"
 INP_FM = 'facemesh'
-OUT_LF = "libreface"
+OUT_LF = "libreface_stream"
+OUT_LF_EMO = "libreface_emotion"
 OUT_ALIGN = 'aligned'
 
 detection = [1, 2, 4, 6, 7, 10, 12, 14, 15, 17, 23, 24]
 regression = [1, 2, 4, 5, 6, 9, 12, 15, 17, 20, 25, 26]
 emotions = ["Neutral", "Happiness", "Sadness", "Surprise", "Fear", "Disgust", "Anger", "Contempt"]
+emo2id = {x: i for i, x in enumerate(emotions)}
 DIM_LABELS = [f'AU{str(x)}_c' for x in detection]
 DIM_LABELS.extend([f'AU{str(x)}_r' for x in regression])
-DIM_LABELS.extend(emotions)
+#DIM_LABELS.extend(emotions)
 DIM_LABELS = [{"id": i, "name": x} for i, x in enumerate(DIM_LABELS)]
 MEDIA_TYPE = 'feature;face;libreface'
 SUBDIR = 'libreface'
@@ -165,7 +170,7 @@ class LibreFace(Processor):
                        #                 providers=['CUDAExecutionProvider','CPUExecutionProvider'])
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        log(f'Initialised LibreFace processor')
+        log(f'Initialised LibreFace processor using device {self.device}')
 
     def process_sample(self, sample):
         images, face_landmarks = sample
@@ -184,8 +189,10 @@ class LibreFace(Processor):
 
         
         images_aligned = []
-        images_preprocessed = []
-        for image, face_landmark in zip(images, face_landmarks):
+        #images_preprocessed = []
+        #for image, face_landmark in zip(images, face_landmarks):
+        def f(x):
+            image, face_landmark = x
             lm_left_eye_x = []
             lm_left_eye_y = []
             lm_right_eye_x = []
@@ -211,6 +218,7 @@ class LibreFace(Processor):
                 image = np.ones((256, 256, 3), dtype=np.uint8) * image.mean()
             # debug
             # aligned_image.save(f'{os.getenv("CACHE_DIR")}/{idx:05d}.jpg')
+            '''
             image_preprocessed = image.astype(float)
             image_preprocessed = image_preprocessed / 255.0
             # supposedly RGB
@@ -219,12 +227,20 @@ class LibreFace(Processor):
             image_preprocessed = image_preprocessed.astype(np.float32)
             image_preprocessed = image_preprocessed.transpose((2, 0, 1))
             
-            images_aligned.append(image)
             images_preprocessed.append(image_preprocessed)
+            '''
+            #images_aligned.append(image)
+            return image
 
-            test = get_au_intensities_and_detect_aus(image, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
-            test2 = get_facial_expression(image, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
+            #test = get_au_intensities_and_detect_aus(image, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
+            #test2 = get_facial_expression(image, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
 
+        with Pool() as p:
+            images_aligned = list(p.imap(f, zip(images, face_landmarks)))
+
+        test = get_au_intensities_and_detect_aus_video(images_aligned, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
+        test2 = get_facial_expression_video(images_aligned, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
+        '''
         images_preprocessed_encoded = [self.au_enc.run(['feature'], {'image': np.expand_dims(x, axis=0)}) for x in
                                        images_preprocessed]
 
@@ -236,6 +252,9 @@ class LibreFace(Processor):
                   for x in images_preprocessed]]
 
         return np.concatenate(preds, axis=-1).squeeze(), np.array(images_aligned, dtype=np.uint8)
+        '''
+        test2 = test2.replace(emo2id).infer_objects(copy=False)
+        return pd.concat([test[0], test[1], test2], axis=1).values, np.array(images_aligned, dtype=np.uint8)
 
     def process_data(self, ds_iterator) -> dict[str, np.ndarray]:
         """Returning a dictionary that contains the original keys from the dataset iterator and a list of processed
@@ -267,7 +286,7 @@ class LibreFace(Processor):
             predictions.extend(preds)
             alignments.extend(aligns)
             e = perf_counter()
-            print(f'{e - s:.3f}s/batch, {(e - s) / self.batch_size:.3f}s/image,'
+            log(f'{e - s:.3f}s/batch, {(e - s) / self.batch_size:.3f}s/image,'
                   f' eta {(tot_batch - i / self.batch_size) * (e - s):.3f}s')
             # debug
             # break
@@ -276,8 +295,12 @@ class LibreFace(Processor):
 
     def to_output(self, data: np.ndarray) -> dict:
         output_templates = self.session_manager.output_data_templates
+        frame = int(1000 / self.session_manager.input_data[INP_VID].meta_data.sample_rate)
+        l = len(d := data['predictions'][:, -1])
+        emo_data = np.array([[i*frame for i in range(l)], [i*frame for i in range(1,l+1)], d, [1]*l]).T  # from, to, id, conf
+        output_templates[OUT_LF_EMO].data = [tuple(x) for x in emo_data]
         output_templates[OUT_LF] = SSIStream(
-            data=data['predictions'],
+            data=data['predictions'][:, :-1],
             sample_rate=self.session_manager.input_data[INP_VID].meta_data.sample_rate,
             dim_labels=DIM_LABELS,
             media_type=MEDIA_TYPE,

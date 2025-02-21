@@ -45,7 +45,8 @@ class Common_Dataset(data.Dataset):
 
     def __getitem__(self, index):
         image_path = self.images[index]
-        image = self.pil_loader(image_path)
+        #image = self.pil_loader(image_path)
+        image = Image.fromarray(image_path)
 
         image = self.transform(image)
 
