@@ -300,7 +300,7 @@ class LibreFace(Processor):
         emo_data = np.array([[i*frame for i in range(l)], [i*frame for i in range(1,l+1)], d, [1]*l]).T  # from, to, id, conf
         output_templates[OUT_LF_EMO].data = [tuple(x) for x in emo_data]
         output_templates[OUT_LF] = SSIStream(
-            data=data['predictions'][:, :-1],
+            data=data['predictions'][:, :-1].astype(np.dtype('<f4')),
             sample_rate=self.session_manager.input_data[INP_VID].meta_data.sample_rate,
             dim_labels=DIM_LABELS,
             media_type=MEDIA_TYPE,
