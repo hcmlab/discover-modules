@@ -15,7 +15,8 @@ from discover_utils.utils.log_utils import log
 from time import perf_counter
 from discover_utils.data.stream import SSIStream, Video
 import sys
-sys.path.insert(0, __file__[:-1-len(__file__.split('/')[-1])])  # <path>/libreface_script.py -> <path> for imports from <libreface> folder
+if (p := __file__[:-1-len(__file__.split('/')[-1])]) not in sys.path:  # <path>/libreface_script.py -> <path> for imports from <libreface> folder
+    sys.path.insert(0, p)
 from libreface.AU_Recognition.inference import get_au_intensities_and_detect_aus_video
 from libreface.Facial_Expression_Recognition.inference import get_facial_expression_video
 import torch
