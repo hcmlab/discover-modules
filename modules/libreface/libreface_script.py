@@ -15,8 +15,9 @@ from discover_utils.utils.log_utils import log
 from time import perf_counter
 from discover_utils.data.stream import SSIStream, Video
 import sys
-if (p := __file__[:-1-len(__file__.split('/')[-1])]) not in sys.path:  # <path>/libreface_script.py -> <path> for imports from <libreface> folder
+if (p := __file__[:-1-len(__file__.split(os.sep)[-1])]) not in sys.path:  # <path>/libreface_script.py -> <path> for imports from <libreface> folder
     sys.path.insert(0, p)
+import platform
 from libreface.AU_Recognition.inference import get_au_intensities_and_detect_aus_video
 from libreface.Facial_Expression_Recognition.inference import get_facial_expression_video
 import torch
@@ -169,46 +170,76 @@ class LibreFace(Processor):
 
         
         images_aligned = []
-        #for image, face_landmark in zip(images, face_landmarks):  # before multiprocessing
-        def f(x):
-            image, face_landmark = x
-            lm_left_eye_x = []
-            lm_left_eye_y = []
-            lm_right_eye_x = []
-            lm_right_eye_y = []
-            lm_lips_x = []
-            lm_lips_y = []
-            for i in Left_eye:
-                lm_left_eye_x.append(face_landmark[i][1])
-                lm_left_eye_y.append(face_landmark[i][0])
-            for i in Right_eye:
-                lm_right_eye_x.append(face_landmark[i][1])
-                lm_right_eye_y.append(face_landmark[i][0])
-            for i in Lips:
-                lm_lips_x.append(face_landmark[i][1])
-                lm_lips_y.append(face_landmark[i][0])
-            lm_x = lm_left_eye_x + lm_right_eye_x + lm_lips_x
-            lm_y = lm_left_eye_y + lm_right_eye_y + lm_lips_y
-            landmark = np.array([lm_x, lm_y]).T
+        if platform.system() == 'Windows':
+            log('No multiprocessing support on Windows!')
+            for image, face_landmark in zip(images, face_landmarks):
+                lm_left_eye_x = []
+                lm_left_eye_y = []
+                lm_right_eye_x = []
+                lm_right_eye_y = []
+                lm_lips_x = []
+                lm_lips_y = []
+                for i in Left_eye:
+                    lm_left_eye_x.append(face_landmark[i][1])
+                    lm_left_eye_y.append(face_landmark[i][0])
+                for i in Right_eye:
+                    lm_right_eye_x.append(face_landmark[i][1])
+                    lm_right_eye_y.append(face_landmark[i][0])
+                for i in Lips:
+                    lm_lips_x.append(face_landmark[i][1])
+                    lm_lips_y.append(face_landmark[i][0])
+                lm_x = lm_left_eye_x + lm_right_eye_x + lm_lips_x
+                lm_y = lm_left_eye_y + lm_right_eye_y + lm_lips_y
+                landmark = np.array([lm_x, lm_y]).T
 
-            try:
-                image = image_align(Image.fromarray(image), landmark)
-            except ValueError:
-                image = np.ones((256, 256, 3), dtype=np.uint8) * image.mean()
-            # debug
-            # aligned_image.save(f'{os.getenv("CACHE_DIR")}/{idx:05d}.jpg')
+                try:
+                    image = image_align(Image.fromarray(image), landmark)
+                except ValueError:
+                    image = np.ones((256, 256, 3), dtype=np.uint8) * image.mean()
+                # debug
+                # aligned_image.save(f'{os.getenv("CACHE_DIR")}/{idx:05d}.jpg')
 
-            #images_aligned.append(image)
-            return image
-        
-        with Pool() as p:
-            images_aligned = list(p.imap(f, zip(images, face_landmarks)))
+                images_aligned.append(image)
+        else:
+            #for image, face_landmark in zip(images, face_landmarks):  # before multiprocessing
+            def f(x):
+                image, face_landmark = x
+                lm_left_eye_x = []
+                lm_left_eye_y = []
+                lm_right_eye_x = []
+                lm_right_eye_y = []
+                lm_lips_x = []
+                lm_lips_y = []
+                for i in Left_eye:
+                    lm_left_eye_x.append(face_landmark[i][1])
+                    lm_left_eye_y.append(face_landmark[i][0])
+                for i in Right_eye:
+                    lm_right_eye_x.append(face_landmark[i][1])
+                    lm_right_eye_y.append(face_landmark[i][0])
+                for i in Lips:
+                    lm_lips_x.append(face_landmark[i][1])
+                    lm_lips_y.append(face_landmark[i][0])
+                lm_x = lm_left_eye_x + lm_right_eye_x + lm_lips_x
+                lm_y = lm_left_eye_y + lm_right_eye_y + lm_lips_y
+                landmark = np.array([lm_x, lm_y]).T
+
+                try:
+                    image = image_align(Image.fromarray(image), landmark)
+                except ValueError:
+                    image = np.ones((256, 256, 3), dtype=np.uint8) * image.mean()
+                # debug
+                # aligned_image.save(f'{os.getenv("CACHE_DIR")}/{idx:05d}.jpg')
+
+                #images_aligned.append(image)
+                return image
+            
+            with Pool() as p:
+                images_aligned = list(p.imap(f, zip(images, face_landmarks)))
 
         au_c_r = get_au_intensities_and_detect_aus_video(images_aligned, batch_size=self.batch_size, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
         fer = get_facial_expression_video(images_aligned, batch_size=self.batch_size, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
 
         fer = fer.replace(emo2id).infer_objects(copy=False)
-        torch.cuda.empty_cache()
         return pd.concat([au_c_r[0], au_c_r[1], fer], axis=1).values, np.array(images_aligned, dtype=np.uint8)
 
     def process_data(self, ds_iterator) -> dict[str, np.ndarray]:
@@ -246,6 +277,7 @@ class LibreFace(Processor):
             # debug
             # break
 
+        torch.cuda.empty_cache()
         return {'predictions': np.array(predictions), 'alignments': np.array(alignments)}
 
     def to_output(self, data: np.ndarray) -> dict:
