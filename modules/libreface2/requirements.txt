@@ -1,5 +1,7 @@
 hcai-discover-utils
+multiprocess
 pandas
+scipy
 opencv-python
 gdown
 timm
