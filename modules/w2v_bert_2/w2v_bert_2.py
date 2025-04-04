@@ -99,7 +99,7 @@ class W2VBert2(Processor):
                 hidden_states = torch.mean(outputs[0], dim=1)
                 output_embeddings.append(hidden_states)
                 log(
-                    f"Batch {i / self.batch_size} : {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
+                    f"Batch {int(i / self.batch_size)} : {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
                 )
                 current_batch = []
                 t_start = perf_counter()
@@ -109,10 +109,11 @@ class W2VBert2(Processor):
             outputs = self._process_batch(current_batch)
             # Average last hidden states
             hidden_states = torch.mean(outputs[0], dim=1)
-            log(
-                f"Partial batch with {len(current_batch)} samples: {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
-            )
             output_embeddings.append(hidden_states)
+            log(
+                f"Partial batch with {len(current_batch)} samples: {int(len(current_batch) / (perf_counter() - t_start))} samples/s"
+            )
+
 
         output_embeddings = torch.concatenate(output_embeddings).cpu().numpy()
         if nan_idx:

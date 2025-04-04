@@ -87,7 +87,7 @@ class XLMRoBERTa(Processor):
                 pooled_output = outputs['pooler_output']
                 output_embeddings.append(pooled_output)
                 log(
-                    f"Batch {i / self.batch_size} : {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
+                    f"Batch {int(i / self.batch_size)} : {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
                 )
                 current_batch = []
                 t_start = perf_counter()
@@ -97,10 +97,11 @@ class XLMRoBERTa(Processor):
             outputs = self._process_batch(current_batch)
             # Average last hidden states
             hidden_states = torch.mean(outputs[0], dim=1)
-            log(
-                f"Partial batch with {len(current_batch)} samples: {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
-            )
             output_embeddings.append(hidden_states)
+            log(
+                f"Partial batch with {len(current_batch)} samples: {int(len(current_batch) / (perf_counter() - t_start))} samples/s"
+            )
+
 
         output_embeddings = torch.concatenate(output_embeddings).cpu().numpy()
         return output_embeddings
