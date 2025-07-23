@@ -1,0 +1,3 @@
+hcai-discover-utils
+git+https://github.com/nyrahealth/transformers.git@crisper_whisper
+accelerate
