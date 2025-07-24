@@ -5,12 +5,20 @@ Based on: https://github.com/nyrahealth/CrisperWhisper
 
 CrisperWhisper provides advanced speech recognition with verbatim transcriptions 
 and precise word-level timestamps, minimizing hallucinations.
+
+TODO: Remove workarounds once upstream issues are fixed:
+- German repetition issue: https://github.com/nyrahealth/CrisperWhisper/issues/40
+- Chunking overlap issue: https://github.com/nyrahealth/CrisperWhisper/issues/41
 """
 
 import sys
 import os
 import torch
 import numpy as np
+import warnings
+
+# Suppress HuggingFace deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hub")
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -32,6 +40,7 @@ _default_options = {
     "return_timestamps": "word",
     "confidence": 1.0,
     "segmentation": "word",
+    "debug": False,
 }
 
 class CrisperWhisper(Processor):
@@ -80,18 +89,24 @@ class CrisperWhisper(Processor):
         
         self.processor = AutoProcessor.from_pretrained(self.options["model_id"])
         
+        log(f"Creating pipeline with chunk_length_s={self.options['chunk_length_s']}")
+        
+        # Use default generation parameters to avoid interfering with model quality
+        generate_kwargs = {'language': f'<|{self.options["language"]}|>'}
+        
+        log(f"Using generation parameters: {generate_kwargs}")
+        
         self.pipeline = pipeline(
             "automatic-speech-recognition",
             model=self.model,
             tokenizer=self.processor.tokenizer,
             feature_extractor=self.processor.feature_extractor,
-            #max_new_tokens=128,
             chunk_length_s=self.options["chunk_length_s"],
             batch_size=self.options["batch_size"],
             return_timestamps=self.options["return_timestamps"],
             torch_dtype=self.torch_dtype,
             device=self.device,
-            generate_kwargs={'language': f'<|{self.options["language"]}|>'}
+            generate_kwargs=generate_kwargs
         )
 
     def _get_spacy_sentencizer(self, language):
@@ -172,6 +187,106 @@ class CrisperWhisper(Processor):
         
         return {"text": full_text, "chunks": sentence_chunks}
 
+    def _deduplicate_chunks(self, result, pause_threshold=0.12):
+        chunks = result.get("chunks", [])
+        if not chunks:
+            return result
+            
+        # Sort chunks by start time to process in chronological order
+        sorted_chunks = sorted(chunks, key=lambda x: x["timestamp"][0])
+        
+        deduplicated_chunks = []
+        removed_count = 0
+        
+        for chunk in sorted_chunks:
+            is_duplicate = False
+            current_text = chunk["text"].strip().lower()
+            current_start, current_end = chunk["timestamp"]
+            
+            # Check against already kept chunks for duplicates
+            for kept_chunk in deduplicated_chunks:
+                kept_text = kept_chunk["text"].strip().lower()
+                kept_start, kept_end = kept_chunk["timestamp"]
+                
+                # Check if texts are similar and timestamps are very close
+                if (current_text == kept_text and 
+                    abs(current_start - kept_start) <= pause_threshold):
+                    is_duplicate = True
+                    removed_count += 1
+                    if self.options.get("debug", False):
+                        log(f"Removing duplicate chunk: '{chunk['text']}' at ({current_start:.3f}, {current_end:.3f})")
+                        log(f"  Original kept: '{kept_chunk['text']}' at ({kept_start:.3f}, {kept_end:.3f})")
+                    break
+            
+            if not is_duplicate:
+                deduplicated_chunks.append(chunk)
+        
+        log(f"Deduplication: Removed {removed_count} duplicate chunks, kept {len(deduplicated_chunks)}")
+        
+        # Rebuild text from deduplicated chunks to keep them in sync
+        original_text = result.get("text", "")
+        rebuilt_text = " ".join([chunk["text"] for chunk in deduplicated_chunks])
+        
+        log(f"Text reconstruction:")
+        log(f"  Original text length: {len(original_text)}")
+        log(f"  Rebuilt text length: {len(rebuilt_text)}")
+        
+        result["chunks"] = deduplicated_chunks
+        result["text"] = rebuilt_text
+        return result
+
+    def _debug_check_overlaps(self, chunks, stage_name):
+        overlaps = []
+        invalid_chunks = []
+        
+        # Check for invalid timestamps within chunks (start > end)
+        for i, chunk in enumerate(chunks):
+            start, end = chunk["timestamp"]
+            if start > end:
+                invalid_chunks.append({
+                    "chunk_idx": i,
+                    "text": chunk["text"],
+                    "start": start,
+                    "end": end,
+                    "invalid_duration": start - end
+                })
+        
+        # Check for overlaps between adjacent chunks
+        for i in range(len(chunks) - 1):
+            current_end = chunks[i]["timestamp"][1]
+            next_start = chunks[i + 1]["timestamp"][0]
+            if current_end > next_start:
+                overlap_duration = current_end - next_start
+                overlaps.append({
+                    "chunk_idx": i,
+                    "current_text": chunks[i]["text"],
+                    "next_text": chunks[i + 1]["text"],
+                    "current_end": current_end,
+                    "next_start": next_start,
+                    "overlap_duration": overlap_duration
+                })
+        
+        # Log invalid chunks
+        if invalid_chunks:
+            log(f"INVALID TIMESTAMPS at {stage_name}: {len(invalid_chunks)} chunks with start > end")
+            for invalid in invalid_chunks[:3]:  # Show first 3 invalid chunks
+                log(f"  Chunk {invalid['chunk_idx']}: '{invalid['text']}'")
+                log(f"    Start: {invalid['start']:.3f}s, End: {invalid['end']:.3f}s (INVALID!)")
+                log(f"    Invalid duration: {invalid['invalid_duration']:.3f}s")
+        
+        # Log overlaps
+        if overlaps:
+            log(f"OVERLAP DETECTED at {stage_name}: {len(overlaps)} overlapping chunks")
+            for overlap in overlaps[:3]:  # Show first 3 overlaps
+                log(f"  Chunk {overlap['chunk_idx']}: '{overlap['current_text']}' ends at {overlap['current_end']:.3f}")
+                log(f"  Chunk {overlap['chunk_idx']+1}: '{overlap['next_text']}' starts at {overlap['next_start']:.3f}")
+                log(f"  Overlap duration: {overlap['overlap_duration']:.3f}s")
+        
+        if not invalid_chunks and not overlaps:
+            log(f"No timestamp issues detected at {stage_name}")
+        
+        return len(overlaps) + len(invalid_chunks)
+
     def process_data(self, ds_manager) -> dict:
         if self.pipeline is None:
             self._load_model()
@@ -179,25 +294,56 @@ class CrisperWhisper(Processor):
         self.session_manager = self.get_session_manager(ds_manager)
         input_audio = self.session_manager.input_data['audio']
         
-        log(f"Processing audio file: {input_audio.meta_data.file_path}")
+        log(f"Processing audio file: {os.sep.join(str(input_audio.meta_data.file_path).split(os.sep)[-3:])}")
         
-        # TODO: Remove exception handling - let errors propagate to DISCOVER for ungraceful job termination
-        try:
-            from utils import _adjust_pauses_for_hf_pipeline_output
-            # Use file path instead of numpy data for better compatibility
-            result = self.pipeline(str(input_audio.meta_data.file_path))
-            result = _adjust_pauses_for_hf_pipeline_output(result)
+        from utils import _adjust_pauses_for_hf_pipeline_output
+        # Use file path instead of numpy data for better compatibility
+        result = self.pipeline(str(input_audio.meta_data.file_path))
+        
+        # Debug logging for overlap detection (only when debug=True)
+        if self.options.get("debug", False):
+            log(f"Pipeline used chunk_length_s={self.options['chunk_length_s']}")
+            chunks = result.get("chunks", [])
+            log(f"Total chunks received: {len(chunks)}")
             
-            # Apply sentence segmentation if requested
-            result = self._apply_sentence_segmentation(result)
+            # Show chunks around potential 30s boundaries (60s, 90s, 120s etc)
+            boundaries = [30, 60, 90, 120, 150, 180, 210, 240]
+            for boundary in boundaries:
+                boundary_chunks = [i for i, chunk in enumerate(chunks) 
+                                 if abs(chunk["timestamp"][0] - boundary) < 5 or 
+                                    abs(chunk["timestamp"][1] - boundary) < 5]
+                if boundary_chunks:
+                    log(f"Chunks near {boundary}s boundary: {boundary_chunks}")
+                    for idx in boundary_chunks[:3]:
+                        if idx < len(chunks):
+                            chunk = chunks[idx]
+                            log(f"  Chunk {idx}: ({chunk['timestamp'][0]:.0f}, {chunk['timestamp'][1]:.0f}) '{chunk['text'][:50]}...'")
             
-            log(f"Transcription completed. Text length: {len(result.get('text', ''))}")
-            
-            return result
-            
-        except Exception as e:
-            log(f"Error during transcription: {str(e)}")
-            return {"text": "", "chunks": []}  # TODO: Remove this fallback, let exception propagate
+            self._debug_check_overlaps(result.get("chunks", []), "RAW MODEL OUTPUT")
+        
+        # Deduplicate chunks from overlapping segments
+        result = self._deduplicate_chunks(result)
+        
+        # Debug: Check after deduplication
+        if self.options.get("debug", False):
+            self._debug_check_overlaps(result.get("chunks", []), "AFTER DEDUPLICATION")
+        
+        result = _adjust_pauses_for_hf_pipeline_output(result)
+        
+        # Debug: Check for overlaps after pause adjustment
+        if self.options.get("debug", False):
+            self._debug_check_overlaps(result.get("chunks", []), "AFTER PAUSE ADJUSTMENT")
+        
+        # Apply sentence segmentation if requested
+        result = self._apply_sentence_segmentation(result)
+        
+        # Debug: Check for overlaps after sentence segmentation
+        if self.options.get("debug", False):
+            self._debug_check_overlaps(result.get("chunks", []), "AFTER SENTENCE SEGMENTATION")
+        
+        log(f"Transcription completed. Text length: {len(result.get('text', ''))}")
+        
+        return result
 
     def to_output(self, data: dict):
         annotation = self.session_manager.output_data_templates[OUTPUT_ID]
