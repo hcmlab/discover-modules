@@ -5,5 +5,5 @@
         <io type="input" id="audio" data="stream:Audio" default_value="audio"/>
         <io type="output" id="transcript" data="annotation:Free" default_value="transcript"/>
     </meta>
-    <model create="CrisperWhisper" script="crisperwhisper.py" optstr="{language:LIST:de,en};{device:LIST:auto,cpu,cuda};{torch_dtype:LIST:auto,float16,float32}"/>
+    <model create="CrisperWhisper" script="crisperwhisper.py" optstr="{language:LIST:de,en};{segmentation:LIST:word,sentence};{device:LIST:auto,cpu,cuda};{torch_dtype:LIST:auto,float16,float32}"/>
 </trainer>

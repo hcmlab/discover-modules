@@ -31,6 +31,7 @@ _default_options = {
     "language": "de",
     "return_timestamps": "word",
     "confidence": 1.0,
+    "segmentation": "word",
 }
 
 class CrisperWhisper(Processor):
@@ -42,6 +43,7 @@ class CrisperWhisper(Processor):
         self.processor = None
         self.pipeline = None
         self.session_manager = None
+        self.nlp_models = {}
 
     def _setup_device_and_dtype(self):
         if self.options["device"] == "auto":
@@ -92,6 +94,84 @@ class CrisperWhisper(Processor):
             generate_kwargs={'language': f'<|{self.options["language"]}|>'}
         )
 
+    def _get_spacy_sentencizer(self, language):
+        if language not in self.nlp_models:
+            try:
+                import spacy
+                self.nlp_models[language] = spacy.blank(language)
+                self.nlp_models[language].add_pipe("sentencizer")
+                log(f"Loaded spaCy sentencizer for language: {language}")
+            except Exception as e:
+                log(f"Failed to load spaCy sentencizer for {language}: {str(e)}")
+                self.nlp_models[language] = None
+        return self.nlp_models[language]
+
+    def _apply_sentence_segmentation(self, result):
+        if self.options["segmentation"] != "sentence":
+            return result
+            
+        language = self.options["language"]
+        full_text = result.get("text", "")
+        
+        if not full_text.strip():
+            return result
+            
+        nlp = self._get_spacy_sentencizer(language)
+        if nlp is None:
+            log("spaCy sentencizer not available, falling back to word segmentation")
+            return result
+            
+        doc = nlp(full_text)
+        sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+        
+        if not sentences:
+            return result
+            
+        # Create sentence-level chunks by combining word-level timestamps
+        word_chunks = result.get("chunks", [])
+        if not word_chunks:
+            return {"text": full_text, "chunks": []}
+            
+        sentence_chunks = []
+        word_idx = 0
+        
+        for sentence in sentences:
+            sentence_words = sentence.split()
+            if not sentence_words:
+                continue
+                
+            # Find matching word chunks for this sentence
+            sentence_word_chunks = []
+            remaining_words = len(sentence_words)
+            
+            while word_idx < len(word_chunks) and remaining_words > 0:
+                chunk = word_chunks[word_idx]
+                chunk_text = chunk["text"].strip()
+                
+                # Check if this chunk's text matches any word in our sentence
+                if any(word.lower() in chunk_text.lower() or chunk_text.lower() in word.lower() 
+                       for word in sentence_words):
+                    sentence_word_chunks.append(chunk)
+                    remaining_words -= len(chunk_text.split())
+                
+                word_idx += 1
+                
+                # Break if we've likely covered all words in the sentence
+                if remaining_words <= 0:
+                    break
+            
+            if sentence_word_chunks:
+                # Create sentence chunk with combined timestamps
+                start_time = sentence_word_chunks[0]["timestamp"][0]
+                end_time = sentence_word_chunks[-1]["timestamp"][1]
+                
+                sentence_chunks.append({
+                    "text": sentence,
+                    "timestamp": [start_time, end_time]
+                })
+        
+        return {"text": full_text, "chunks": sentence_chunks}
+
     def process_data(self, ds_manager) -> dict:
         if self.pipeline is None:
             self._load_model()
@@ -107,6 +187,9 @@ class CrisperWhisper(Processor):
             # Use file path instead of numpy data for better compatibility
             result = self.pipeline(str(input_audio.meta_data.file_path))
             result = _adjust_pauses_for_hf_pipeline_output(result)
+            
+            # Apply sentence segmentation if requested
+            result = self._apply_sentence_segmentation(result)
             
             log(f"Transcription completed. Text length: {len(result.get('text', ''))}")
             
