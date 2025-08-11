@@ -248,4 +248,16 @@ utility/.DS_Store
 *.DS_Store
 /local/schwan_emonet_debug.py
 *.pth
+modules/blazeface/local/88Y8_S03_patient_transcript.annotation
+modules/blazeface/local/88Y8_S03_patient_transcript.annotation~
+modules/blazeface/local/88Y8_S03_patient_transcript.csv
+modules/blazeface/local/88Y8_S03_patient_transcript.csv~
+modules/blazeface/local/download_annotation.py
+modules/blazeface/local/eval.py
+modules/blazeface/local/novice.audio.gemaps\[480ms,40ms,480ms\]_modified.stream
+modules/blazeface/local/novice.audio.gemaps\[480ms,40ms,480ms\]_modified.stream~
+modules/blazeface/local/scene_search_example.py
+modules/blazeface/local/smile_mirroring.annotation~
+modules/blazeface/local/smile_mirroring.annotation
+modules/blazeface/local/test.csv
 .vscode

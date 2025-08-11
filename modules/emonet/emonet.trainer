@@ -1,0 +1,17 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta backend="nova-server" category="Emotion " description="Calculates categorical emotions and valence / arousal for facial expressions." is_iterable="False">
+    <io type="input" id="video" data="stream:Video" default_value="video" />
+    <io type="input" id="face_bb" data="stream:SSIStream:blazeface" default_value="face_bounding_box" />
+
+    <!--<io type="output" id="heatmap" data="stream:SSIStream:emonet_heatmap" default_value="heatmap" />-->
+    <io type="output" id="expression" data="annotation:Discrete" default_value="emotion" />
+    <io type="output" id="valence" data="annotation:Continuous" default_value="valence" />
+    <io type="output" id="arousal" data="annotation:Continuous" default_value="arousal" />
+
+    <uri id="emonet_5" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Femonet&amp;files=emonet_5.pth" hash="1d8fac689dc04fc65a8a25c050bd5888e1fc794fcf71c2b20a1f2e6b78d933dd" />
+    <uri id="emonet_8" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Femonet&amp;files=emonet_8.pth" hash="52918cffba56f31886e6959f6837266a5f7ef5c0a552baf4c6dabe1e8fa9bc97" />
+</meta>
+<model create="EmoNet" script="emonet.py" optstr="{batch_size:STRING:50};{num_expressions:LIST:8,5};{face_detection_min_conf:STRING:0.65};{temporal_smoothing:BOOL:False}"/>
+</trainer>

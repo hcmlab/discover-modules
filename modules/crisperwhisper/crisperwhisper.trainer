@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+    <info trained="true" seed="1234"/>
+    <meta backend="nova-server" category="Transcript" description="Advanced speech recognition with verbatim transcriptions and precise word-level timestamps using CrisperWhisper. English and German only!" is_iterable="False">
+        <io type="input" id="audio" data="stream:Audio" default_value="audio"/>
+        <io type="output" id="transcript" data="annotation:Free" default_value="transcript"/>
+    </meta>
+    <model create="CrisperWhisper" script="crisperwhisper.py" optstr="{language:LIST:de,en};{segmentation:LIST:word,sentence};{device:LIST:auto,cpu,cuda};{torch_dtype:LIST:auto,float16,float32}"/>
+</trainer>

@@ -1,5 +1,7 @@
 hcai-discover-utils
+multiprocess
+pandas
 scipy
-Pillow
-multiprocessing_on_dill
-onnxruntime
+opencv-python
+gdown
+timm
