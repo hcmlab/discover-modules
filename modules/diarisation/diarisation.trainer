@@ -6,5 +6,5 @@
 	    <io type="input" id="in" data="annotation:Free" default_value="transcript"/>
 	    <io type="output" id="out" data="annotation:Free" default_value="transcript"/>
 	</meta>
-    <model create="Diarisation" path="diarisation" script="diarisation.py" optstr="{roles:STRING:$(role);{role_samples:STRING:(4.3,10),(10.5,18)};{speaker_embedding:LIST:speechbrain,wespeaker,pyannote};{method:LIST:finch,agglomerative};{metric:LIST:euclidean,manhattan,cosine};{split_audio:BOOL:False}}"/>
+    <model create="Diarisation" path="diarisation" script="diarisation.py" optstr="{roles:STRING:$(role)};{role_samples:STRING:(4.3,10),(10.5,18)};{speaker_embedding:LIST:speechbrain,wespeaker,pyannote};{method:LIST:finch,agglomerative};{metric:LIST:euclidean,manhattan,cosine};{split_audio:BOOL:False}"/>
 </trainer>
