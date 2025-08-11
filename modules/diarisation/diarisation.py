@@ -11,6 +11,7 @@ Date:
 import os
 import discover_utils
 from discover_utils.interfaces.server_module import Processor
+from discover_utils.utils.log_utils import log
 from pathlib import Path
 
 class Diarisation(Processor):
@@ -19,8 +20,8 @@ class Diarisation(Processor):
         self.device = None
         self.ds_manager = None
         self.current_session = None
-        self.options = {'metric': 'cosine', 'roles': None, 'role_samples': None, 'speaker_embedding': 'speechbrain',
-                        'method': 'finch'} | self.options
+        self.options = {'metric': 'euclidean', 'roles': None, 'role_samples': None, 'speaker_embedding': 'speechbrain',
+                        'method': 'finch', 'split_audio': False} | self.options
         if self.options['role_samples'] == '':
             self.options['role_samples'] = None
 
@@ -63,7 +64,7 @@ class Diarisation(Processor):
 
         # TODO: word aligned diarisation is underwhelming;
         #  combine it with sentence-based embeddings or other modalities, eg video: open mouth
-        print('diarising')
+        log('diarising')
         import numpy as np
         import torch
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -196,7 +197,7 @@ class Diarisation(Processor):
                 spkr_embeds[i] = spkr_embed_model(data[np.newaxis])
                 pr = True
             if pr:
-                print(eps)
+                log(eps)
             eps = eps_start
 
         # pyannote embeddings unreliable; debug info
@@ -267,5 +268,21 @@ class Diarisation(Processor):
             else:
                 raise ValueError(f'unknown method {self.options["method"]} specified')
         
-        print('assigned' + ','.join([f' {len(diarisation[x])} annos to {x}' for x in diarisation.keys()]))
+        log('assigned' + ','.join([f' {len(diarisation[x])} annos to {x}' for x in diarisation.keys()]))
+
+        if self.options['split_audio']:
+            log('splitting audio')
+            import soundfile as sf
+            #data, sr = sf.read(audio_file)
+            sr = self.current_session.input_data['audio'].meta_data.sample_rate
+            for role in diarisation.keys():
+                # set all the non transcribed parts to zero
+                data_cpy = self.current_session.input_data['audio'].data.copy()
+                start = 0.0
+                for sent in diarisation[role]:
+                    data_cpy[int(start*sr):int(sent['from']*sr)] = 0.0
+                    start = sent['to']
+                data_cpy[int(start*sr):] = 0
+                sf.write(str(audio_file).replace(self.current_session.input_data['audio'].meta_data.role+'.', role+'.'), data_cpy, sr)
+
         return diarisation

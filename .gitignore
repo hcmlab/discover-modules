@@ -248,3 +248,4 @@ utility/.DS_Store
 *.DS_Store
 /local/schwan_emonet_debug.py
 *.pth
+.vscode

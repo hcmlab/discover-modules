@@ -27,6 +27,8 @@ This modules diarises whisperx transcript to the given roles. Do this either by 
     - `finch`: [finch](https://github.com/ssarfraz/FINCH-Clustering/tree/master)
     - `agglomerative`: [sklearn](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.AgglomerativeClustering.html)
 
+- `split_audio`: check to split the source audio into the specified role-specific audios using respective timestamps from transcription
+
 ## Example payload
 
 ```python
