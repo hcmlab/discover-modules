@@ -1,5 +1,5 @@
 hcai-discover-utils
-finch-clust
-pynndescent
+finch-clust[ann]
 speechbrain
 pyannote-audio
+soundfile
