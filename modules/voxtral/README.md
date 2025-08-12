@@ -19,7 +19,11 @@ Mistral's first real-time speech-to-text model with native multilingual support.
     - `bfloat16` - Brain floating point 16-bit (recommended)
     - `float16` - Half precision floating point
 
-**Note**: Voxtral requires CUDA-enabled GPU. Audio files up to 30 minutes are supported.
+- `verbose`: Enable detailed logging:
+    - `True` - Show chunking and stitching debug information
+    - `False` - Minimal logging (default)
+
+**Note**: Voxtral requires CUDA-enabled GPU. Audio files of any length are supported through intelligent chunking.
 
 ## IO
 

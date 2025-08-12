@@ -5,5 +5,5 @@
 	    <io type="input" id="audio" data="stream:Audio" default_value="audio"/>
 	    <io type="output" id="transcript" data="annotation:Free" default_value="transcript"/>
 	</meta>
-    <model create="Voxtral" script="voxtral.py" optstr="{model:LIST:voxtral-mini-3b,voxtral-small-24b};{language:LIST:auto,en,de,ar,ca,cs,da,el,es,fa,fi,fr,he,hi,hr,hu,it,ja,ko,nl,pl,pt,ru,sk,sl,te,tr,uk,ur,vi,zh};{compute_type:LIST:bfloat16,float16}"/>
+    <model create="Voxtral" script="voxtral.py" optstr="{model:LIST:voxtral-mini-3b,voxtral-small-24b};{language:LIST:auto,en,de,ar,ca,cs,da,el,es,fa,fi,fr,he,hi,hr,hu,it,ja,ko,nl,pl,pt,ru,sk,sl,te,tr,uk,ur,vi,zh};{compute_type:LIST:bfloat16,float16};{verbose:BOOL:False}"/>
 </trainer>

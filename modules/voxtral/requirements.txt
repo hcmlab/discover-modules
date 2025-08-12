@@ -2,3 +2,5 @@ hcai-discover-utils
 mistral-common[audio]>=1.8.1
 transformers>=4.54.0
 librosa
+torch
+accelerate
