@@ -80,8 +80,22 @@ class Voxtral(Processor):
             self.options['compute_type'] = torch.float16
             model = VoxtralForConditionalGeneration.from_pretrained(self.options['model'], torch_dtype=self.options['compute_type'], device_map=self.device)
 
+        # Resample audio to 16kHz if needed (Voxtral requirement)
+        target_sample_rate = 16000
+        if meta_data.sample_rate != target_sample_rate:
+            import librosa
+            input_audio = librosa.resample(
+                input_audio.astype(float), 
+                orig_sr=meta_data.sample_rate, 
+                target_sr=target_sample_rate
+            )
+            if self.options['verbose']:
+                log(f'Resampled audio from {meta_data.sample_rate}Hz to {target_sample_rate}Hz')
+            sample_rate = target_sample_rate
+        else:
+            sample_rate = meta_data.sample_rate
+
         # Create 30-minute chunks with 15s overlap for long audio processing
-        sample_rate = meta_data.sample_rate
         chunk_size = 1800 * sample_rate  # 30 minutes (1800 seconds)
         overlap_size = 15 * sample_rate  # 15 seconds overlap
         
@@ -206,7 +220,7 @@ class Voxtral(Processor):
                 language=[self.options['language']], 
                 audio=[chunk_audio], 
                 format=[format_ext],
-                sampling_rate=meta_data.sample_rate, 
+                sampling_rate=sample_rate,  # Use the (possibly resampled) sample rate
                 model_id=self.options['model']
             )
             inputs = inputs.to(self.device, dtype=self.options['compute_type'])
