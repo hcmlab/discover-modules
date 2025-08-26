@@ -50,7 +50,7 @@ class EmoW2V(Processor):
 
     def _process_batch(self, batch):
         preprocessed = self.processor(
-            batch, sampling_rate=self.model_sr, return_tensors="pt"
+            batch, sampling_rate=self.model_sr, return_tensors="pt", padding=True
         ).to(self._device)
         with torch.no_grad():
             pred = self.model(preprocessed.input_values)
