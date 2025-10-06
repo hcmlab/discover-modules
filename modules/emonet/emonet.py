@@ -21,12 +21,15 @@ from discover_utils.utils.log_utils import log
 from emonet_source import _EmoNet
 from discover_utils.utils.cache_utils import get_file
 from data_augmentor import DataAugmentor
+from discover_utils.utils.type_definitions import SSINPDataType
+from discover_utils.data.stream import SSIStream
 
 INPUT_ID = "video"
 INPUT_ID_BB = "face_bb"
 OUTPUT_ID_EXPRESSION = "expression"
 OUTPUT_ID_AROUSAL = "arousal"
 OUTPUT_ID_VALENCE = "valence"
+OUTPUT_ID_EMBEDDING = "embedding"
 
 _default_options = {
     "num_expressions": 8,
@@ -109,7 +112,7 @@ class EmoNet(Processor):
 
     def process_data(self, ds_manager) -> dict:
 
-        predictions = {"valence": [], "arousal": [], "expression": []}
+        predictions = {"valence": [], "arousal": [], "expression": [], "embedding": []}
         self.session_manager = self.get_session_manager(ds_manager)
         data_object = self.session_manager.input_data[INPUT_ID]
         data = data_object.data
@@ -163,7 +166,11 @@ class EmoNet(Processor):
                         rest_class_tensor[-1] = 1
                         p[bb_low_conf] = rest_class_tensor.to(self._device)
 
+                    elif k == "embedding":
+                        # Don't clip embeddings, just set to zero for low confidence faces
+                        p[bb_low_conf] = self.no_face_value
                     else:
+                        # Clip valence/arousal to [-1, 1] range
                         p[bb_low_conf] = self.no_face_value
                         p = p.clip(-1,1)
                     predictions[k].append(p)
@@ -176,6 +183,8 @@ class EmoNet(Processor):
     def to_output(self, data: dict) -> dict:
         sr_hz = self.session_manager.input_data[INPUT_ID].meta_data.sample_rate
         for l, d in data.items():
+            if l == OUTPUT_ID_EMBEDDING:
+                continue
             anno = self.session_manager.output_data_templates[l]
             if isinstance(anno.annotation_scheme, DiscreteAnnotationScheme):
                 data_ = np.asarray(
@@ -195,6 +204,12 @@ class EmoNet(Processor):
             else:
                 data_ = None
             anno.data = data_
+
+            # embeddings
+            self.session_manager.output_data_templates[OUTPUT_ID_EMBEDDING] = SSIStream(
+                data=np.array(data["embedding"], SSINPDataType.FLOAT.value),
+                sample_rate=sr_hz
+            )
 
         return self.session_manager.output_data_templates
 

@@ -247,6 +247,7 @@ class _EmoNet(nn.Module):
         final_features = self.avg_pool_2(final_features)
         batch_size = final_features.shape[0]
         final_features = final_features.view(batch_size, final_features.shape[1])
+        embeddings = final_features.clone().detach()
         final_features = self.emo_fc_2(final_features)
 
         if self.temporal_smoothing:
@@ -262,6 +263,7 @@ class _EmoNet(nn.Module):
             "expression": final_features[:, :-2],
             "valence": final_features[:, -2],
             "arousal": final_features[:, -1],
+            "embedding": embeddings,
         }
 
     def eval(self):
