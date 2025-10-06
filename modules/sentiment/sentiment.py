@@ -1,20 +1,22 @@
 ﻿import numpy as np
 import os
 from transformers import AutoModelForSequenceClassification
-from transformers import TFAutoModelForSequenceClassification
 from transformers import AutoTokenizer, AutoConfig
 from discover_utils.interfaces.server_module import Processor
 from discover_utils.utils.anno_utils import resample
 from scipy.special import softmax
 import torch
+from discover_utils.utils.type_definitions import SSINPDataType
+from discover_utils.data.stream import SSIStream
 
 _default_options = {'model_path': "cardiffnlp/twitter-xlm-roberta-base-sentiment"}
 _dim_labels = [
     "sentiment",
 ]
 
-INPUT_ID = 'transcript'
-OUTPUT_ID = 'sentiment'
+INPUT_TRANSCRIPT = 'transcript'
+OUTPUT_SENTIMENT = 'sentiment'
+OUTPUT_EMBEDDING = 'embedding'
 
 class Sentiment(Processor):
     def __init__(self, *args, **kwargs):
@@ -56,22 +58,34 @@ class Sentiment(Processor):
 
         # Build cache to avoid OOM
         with torch.no_grad():
-            cache_map = {x: softmax(self.model(**self.tokenizer(x, return_tensors='pt').to(self.device))[0][0].cpu().numpy()) @ [-1, 0, 1] for x in set(sample_data)}
-        
-        # Set empty string predictions to 0
-        cache_map[''] = 0.0
+            sample_data_set = set(sample_data)
+            model_out = [self.model(**self.tokenizer(x, return_tensors='pt').to(self.device), output_hidden_states=True) for x in sample_data_set]
+            cache_map = {x: softmax(y.logits[0].cpu().numpy()) @ [-1, 0, 1] for x, y in zip(sample_data_set, model_out)}
+            embed_map = {x: y.hidden_states[-1][:, 0, :].squeeze().cpu().numpy() for x, y in zip(sample_data_set, model_out)}
         
         preds = np.array([cache_map[x] for x in sample_data])
-        return preds
+        embeds = np.array([embed_map[x] for x in sample_data])
+        return (preds, embeds)
 
     def to_output(self, data) -> dict:
-        # Append necessary meta information
-        output_anno = self.ds_iter.current_session.output_data_templates[OUTPUT_ID]
+        preds, embeds = data
+        templates = self.ds_iter.current_session.output_data_templates
 
+        # sample rates
         src_sr = (1 / self.ds_iter.stride) * 1000
         trgt_sr = output_anno.annotation_scheme.sample_rate
-        output_anno.data = data.astype(output_anno.annotation_scheme.label_dtype)
+
+        # annotations
+        output_anno = templates[OUTPUT_SENTIMENT]
+        output_anno.data = preds.astype(output_anno.annotation_scheme.label_dtype)
         output_anno.data = resample(output_anno.data,src_sr, trgt_sr)
+
+        # embeddings
+        templates[OUTPUT_EMBEDDING] = SSIStream(
+            data=np.array(embeds, SSINPDataType.FLOAT.value),
+            sample_rate=src_sr
+        )
+
         return self.ds_iter.current_session.output_data_templates
 
 if __name__ == '__main__':
@@ -102,7 +116,7 @@ if __name__ == '__main__':
     transcript = {
         "src": "file:annotation",
         "type": "input",
-        "id": INPUT_ID,
+        "id": INPUT_TRANSCRIPT,
         "uri": str(test_file),
     }
 
@@ -113,7 +127,7 @@ if __name__ == '__main__':
         "role": "testrole",
         "annotator": "schildom",
         "type": "output",
-        "id": OUTPUT_ID,
+        "id": OUTPUT_SENTIMENT,
         "uri": str(test_file),
     }
 
