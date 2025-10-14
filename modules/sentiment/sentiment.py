@@ -71,12 +71,13 @@ class Sentiment(Processor):
         preds, embeds = data
         templates = self.ds_iter.current_session.output_data_templates
 
+        # annotations
+        output_anno = templates[OUTPUT_SENTIMENT]
+
         # sample rates
         src_sr = (1 / self.ds_iter.stride) * 1000
         trgt_sr = output_anno.annotation_scheme.sample_rate
 
-        # annotations
-        output_anno = templates[OUTPUT_SENTIMENT]
         output_anno.data = preds.astype(output_anno.annotation_scheme.label_dtype)
         output_anno.data = resample(output_anno.data,src_sr, trgt_sr)
 
