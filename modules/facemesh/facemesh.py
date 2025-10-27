@@ -171,8 +171,7 @@ class FaceMesh(Processor):
             with torch.no_grad():
                 detections = self.model.batch_predict(frame_t)
 
-            landmarks = np.squeeze(detections[0].cpu().numpy())
-
+            landmarks = detections[0].cpu().numpy().squeeze((-1,-2))  # keep batch size dimension in case it is 1!
             # Scale relative to inputsize
             landmarks = abs_to_rel(landmarks, (self.input_size, self.input_size))
 
