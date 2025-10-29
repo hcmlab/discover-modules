@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+    <info trained="true" seed="1234"/>
+	<meta backend="nova-server" category="Transcript" description="Transcribes audio of up to 30 minutes using Voxtral. Note that 3B requires ~11GB VRAM, 24B ~55GB VRAM." is_iterable="False">
+	    <io type="input" id="audio" data="stream:Audio" default_value="audio"/>
+	    <io type="output" id="transcript" data="annotation:Free" default_value="transcript"/>
+	</meta>
+    <model create="Voxtral" script="voxtral.py" optstr="{model:LIST:voxtral-mini-3b,voxtral-small-24b};{language:LIST:auto,en,de,ar,ca,cs,da,el,es,fa,fi,fr,he,hi,hr,hu,it,ja,ko,nl,pl,pt,ru,sk,sl,te,tr,uk,ur,vi,zh};{compute_type:LIST:bfloat16,float16};{verbose:BOOL:False}"/>
+</trainer>
