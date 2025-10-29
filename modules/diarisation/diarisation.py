@@ -67,6 +67,10 @@ class Diarisation(Processor):
         log('diarising')
         import numpy as np
         import torch
+        import warnings
+        # Suppress deprecation warnings from torchaudio and torch
+        warnings.filterwarnings('ignore', category=UserWarning)
+        warnings.filterwarnings('ignore', category=FutureWarning)
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         torch.cuda.empty_cache()
         from sklearn.cluster import AgglomerativeClustering
@@ -164,9 +168,35 @@ class Diarisation(Processor):
         # audio_duration = audio.get_duration(audio_file)
 
         if self.options['role_samples'] is not None:
-            intervals = [[float(x) for x in tup.split(',')] for tup in
-                         self.options['role_samples'].replace('),(', ';').replace('(', '').replace(')', '').split(';')]
-            assert len(roles) == len(intervals), 'different amount of roles and samples given'
+            # Parse role_samples supporting both formats:
+            # New format: [(start,stop),(start,stop)],[(start,stop),(start,stop)] - multiple samples per role
+            # Legacy format: (start,stop),(start,stop) - single sample per role
+            role_samples_str = self.options['role_samples']
+
+            if '[' in role_samples_str:
+                # New nested format: multiple samples per role
+                # Parse structure: [(4.3,10),(5.2,8)],[(10.5,18),(20,25)]
+                intervals = []
+                # Split by ],[ to get role groups
+                role_groups = role_samples_str.replace(' ', '').strip('[]').split('],[')
+                for group in role_groups:
+                    # Parse samples within each role: (4.3,10),(5.2,8) -> [[4.3,10],[5.2,8]]
+                    # Split by ),( BEFORE removing parentheses to preserve sample boundaries
+                    split_samples = group.split('),(')
+                    # Now remove remaining parentheses from each sample
+                    samples = [[float(x) for x in sample.replace('(', '').replace(')', '').split(',')]
+                              for sample in split_samples if sample]
+                    intervals.append(samples)
+            else:
+                # Legacy format: single sample per role - wrap each as single-element list for consistency
+                samples = [[float(x) for x in tup.split(',')] for tup in
+                          role_samples_str.replace('),(', ';').replace('(', '').replace(')', '').split(';')]
+                intervals = [[sample] for sample in samples]
+
+            assert len(roles) == len(intervals), f'different amount of roles ({len(roles)}) and sample groups ({len(intervals)}) given'
+            # Validate each role has at least one sample
+            for i, role_samples in enumerate(intervals):
+                assert len(role_samples) > 0, f'role {i} ({roles[i]}) has no samples'
 
         spkr_embeds = None
         eps_start = 1e-2
@@ -208,18 +238,24 @@ class Diarisation(Processor):
 
         # use given speaker samples to diarise
         if self.options['role_samples'] is not None:
-            sample_embeds = []
-            for sta, sto in intervals:
-                data, sr = audio.crop(audio_file, Segment(sta, sto), mode='pad')
-                sample_embeds.append(spkr_embed_model(data[np.newaxis]))
-            
-            sample_embeds = list(np.array(sample_embeds).squeeze())
-            
-            centroids = sample_embeds
+            # Compute embeddings for all samples of all roles
+            centroids = []
+            for role_idx, role_samples in enumerate(intervals):
+                role_embeds = []
+                for sta, sto in role_samples:
+                    data, sr = audio.crop(audio_file, Segment(sta, sto), mode='pad')
+                    embed = spkr_embed_model(data[np.newaxis]).squeeze()
+                    role_embeds.append(embed)
+
+                # Calculate mean centroid for this role from all its samples
+                role_centroid = np.mean(role_embeds, axis=0)
+                centroids.append(role_centroid)
+
+            centroids = np.array(centroids)
             distances = dist(spkr_embeds, centroids)
             confidences = softmax(distances)
             labels = np.argmax(confidences, axis=-1)
-            
+
             for x in roles:
                 diarisation[x] = [sentences[i] | {'conf': confidences[i][l]} for i, l in enumerate(labels)
                                   if roles[l] == x]

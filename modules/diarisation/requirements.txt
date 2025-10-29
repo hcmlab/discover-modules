@@ -1,5 +1,9 @@
 hcai-discover-utils
 finch-clust[ann]
+numba>=0.59.0
+torch>=2.0.0,<2.9.0
+torchaudio>=2.0.0,<2.9.0
+huggingface-hub>=0.34.0,<1.0.0
 speechbrain
-pyannote-audio
+pyannote-audio==3.4.0
 soundfile
