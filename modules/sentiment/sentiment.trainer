@@ -4,7 +4,7 @@
 <meta  backend="nova-server" frameStep="40ms" leftContext="0ms" rightContext="0ms" category="Functional,Emotion" description="Extracts the text-based sentiment using model cardiffnlp/twitter-xlm-roberta-base-sentiment or in principle any other Hugging Face model" is_iterable="True">
     <io type="input" id="transcript" data="annotation:Free" default_value="transcript" />
     <io type="output" id="sentiment" data="annotation:Continuous" default_value="sentiment" />
-    <io type="output" id="embedding" data="stream:SSIStream" default_value="embedding" />
+    <io type="output" id="embedding" data="stream:SSIStream" default_value="sentiment" />
 </meta>
 <model create="Sentiment" script="sentiment.py" optstr="model_path:STRING:cardiffnlp/twitter-xlm-roberta-base-sentiment"/>
 </trainer>

@@ -25,7 +25,7 @@ INPUT_ID = "audio"
 OUTPUT_ID_VALENCE = "valence"
 OUTPUT_ID_AROUSAL = "arousal"
 OUTPUT_ID_DOMINANCE = "dominance"
-OUTPUT_ID_EMBEDDINGS = "embeddings"
+OUTPUT_ID_EMBEDDINGS = "embedding"
 
 _default_options = {"batch_size": 250}
 
