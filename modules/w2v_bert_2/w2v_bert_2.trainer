@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta backend="nova-server" category="Voice" frameStep="40ms" leftContext="960ms" rightContext="0" description="Foundation model for speech feature extraction" is_iterable="True">
+    <io type="input" id="audio" data="stream:Audio" default_value="audio" />
+    <io type="output" id="embeddings" data="stream:SSIStream" default_value="w2v_bert_2_embeddings" />
+
+</meta>
+<model create="W2VBert2" script="w2v_bert_2.py" optstr="{batch_size:STRING:250}"/>
+</trainer>

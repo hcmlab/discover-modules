@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta  backend="nova-server" frameStep="500ms" leftContext="4500ms" rightContext="0ms" category="Feature" description="Foundation model for text feature extraction" is_iterable="True">
+    <io type="input" id="transcript" data="annotation:Free" default_value="transcript" />
+    <io type="output" id="embeddings" data="stream:SSIStream" default_value="xlm_roberta_embeddings" />
+</meta>
+<model create="XLMRoBERTa" script="xlm_roberta.py" optstr="{batch_size:STRING:16}"/>
+</trainer>
