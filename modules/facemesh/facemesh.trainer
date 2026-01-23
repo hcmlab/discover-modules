@@ -5,7 +5,7 @@
     <io type="input" id="data" data="stream:Video" default_value="video" />
     <io type="input" id="bounding_box" data="stream:SSIStream:feature;face;boundingbox" default_value="face_bounding_box" />
     <io type="output" id="landmarks" data="stream:SSIStream:feature;face;landmarks:facemesh" default_value="face_mesh" />
-    <uri id="weights" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Ffacemesh&amp;files=facial_landmarks.pth" hash="'43183e63193445731be64855c13f8db2a4182193503f319ae6fe741292f1fc91'" tar="False" />
+    <uri id="weights" url="https://github.com/tiqq111/mediapipe_pytorch/raw/refs/heads/main/facial_landmarks/model_weights/facial_landmarks.pth" hash="43183e63193445731be64855c13f8db2a4182193503f319ae6fe741292f1fc91" tar="False" />
 </meta>
 <model create="FaceMesh" script="facemesh.py" optstr="{batch_size:STRING:250}"/>
 </trainer>

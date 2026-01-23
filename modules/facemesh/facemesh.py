@@ -62,7 +62,7 @@ class FaceMesh(Processor):
         # Model
         weights_uri = [x for x in self.trainer.meta_uri if x.uri_id == "weights"][0]
         weights_uri = get_file(
-            fname=weights_uri.uri_url.split("=")[-1],
+            fname=weights_uri.uri_url.split("/")[-1],
             origin=weights_uri.uri_url,
             file_hash=weights_uri.uri_hash,
             cache_dir=os.getenv("CACHE_DIR"),
