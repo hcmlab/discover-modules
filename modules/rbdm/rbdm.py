@@ -62,7 +62,7 @@ class RBDM(Processor):
             filter(lambda x: x.uri_id == 'weights', self.trainer.meta_uri), None
         )
         weight_file = get_file(
-            fname=weights_uri.uri_url.split("=")[-1],
+            fname=weights_uri.uri_url.split("/")[-1],
             origin=weights_uri.uri_url,
             file_hash=weights_uri.uri_hash,
             cache_dir=os.getenv("CACHE_DIR"),

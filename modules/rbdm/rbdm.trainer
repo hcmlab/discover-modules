@@ -8,7 +8,7 @@
     <io type="output" id="valence" data="annotation:Continuous" default_value="valence" />
     <io type="output" id="arousal" data="annotation:Continuous" default_value="arousal" />
 
-    <uri id="weights" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Frbdm_mt&amp;files=MobileNetV2_RMSE_E060_L10.8965_RMSE0.3812.h5" hash="" />
+    <uri id="weights" url="https://github.com/hcmlab/discover-modules/releases/download/rbdm-weights-v1/MobileNetV2_RMSE_E060_L10.8965_RMSE0.3812.h5" hash="83cf14709c7919ce97b181534342402e655b4e8b2a7e86261a08cced90e41576" />
 </meta>
 <model create="RBDM" script="rbdm.py" optstr="{batch_size:STRING:50}"/>
 </trainer>

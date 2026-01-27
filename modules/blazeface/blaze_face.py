@@ -114,14 +114,14 @@ class BlazeFace(Processor):
             input_size = (256, 256)
 
         weights = get_file(
-            fname=weights_uri.uri_url.split("=")[-1],
+            fname=weights_uri.uri_url.split("/")[-1],
             origin=weights_uri.uri_url,
             file_hash=weights_uri.uri_hash,
             cache_dir=os.getenv("CACHE_DIR"),
             tmp_dir=os.getenv("TMP_DIR"),
         )
         anchors = get_file(
-            fname=anchors_uri.uri_url.split("=")[-1],
+            fname=anchors_uri.uri_url.split("/")[-1],
             origin=anchors_uri.uri_url,
             file_hash=anchors_uri.uri_hash,
             cache_dir=os.getenv("CACHE_DIR"),

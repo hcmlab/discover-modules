@@ -12,8 +12,8 @@
 
     <io type="output" id="embedding" data="stream:SSIStream" default_value="emonet" />
 
-    <uri id="emonet_5" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Femonet&amp;files=emonet_5.pth" hash="1d8fac689dc04fc65a8a25c050bd5888e1fc794fcf71c2b20a1f2e6b78d933dd" />
-    <uri id="emonet_8" url="https://hcm-lab.de/cloud/s/FNiyD76YAs33D3D/download?path=%2Femonet&amp;files=emonet_8.pth" hash="52918cffba56f31886e6959f6837266a5f7ef5c0a552baf4c6dabe1e8fa9bc97" />
+    <uri id="emonet_5" url="https://github.com/face-analysis/emonet/raw/refs/heads/master/pretrained/emonet_5.pth" hash="1d8fac689dc04fc65a8a25c050bd5888e1fc794fcf71c2b20a1f2e6b78d933dd" />
+    <uri id="emonet_8" url="https://github.com/face-analysis/emonet/raw/refs/heads/master/pretrained/emonet_8.pth" hash="52918cffba56f31886e6959f6837266a5f7ef5c0a552baf4c6dabe1e8fa9bc97" />
 </meta>
 <model create="EmoNet" script="emonet.py" optstr="{batch_size:STRING:50};{num_expressions:LIST:8,5};{face_detection_min_conf:STRING:0.65};{temporal_smoothing:BOOL:False}"/>
 </trainer>
