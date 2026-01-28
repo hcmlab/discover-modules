@@ -97,7 +97,7 @@ class BlazePose(Processor):
             cache_dir=os.getenv("CACHE_DIR"),
             tmp_dir=os.getenv("TMP_DIR"),
         )
-        base_options = python.BaseOptions(model_asset_path=task, delegate=python.BaseOptions.Delegate.CPU)
+        base_options = python.BaseOptions(model_asset_path=str(task), delegate=python.BaseOptions.Delegate.CPU)
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
             output_segmentation_masks=False,
