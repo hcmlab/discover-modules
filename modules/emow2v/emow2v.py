@@ -63,6 +63,40 @@ class EmoW2V(Processor):
         output_predictions = []
         nan_idx = []
         t_start = perf_counter()
+        session_start = t_start
+        batches_done = 0
+        try:
+            total_frames = len(ds_iterator)
+        except Exception:
+            total_frames = None
+        total_batches = (
+            (total_frames + self.batch_size - 1) // self.batch_size
+            if total_frames is not None
+            else None
+        )
+        def _compute_total_frames() -> int | None:
+            info = getattr(ds_iterator, "current_session_info", None)
+            if info is None or info.duration is None:
+                return None
+            stride = getattr(ds_iterator, "stride", None)
+            if stride is None or stride <= 0:
+                return None
+            end = getattr(ds_iterator, "end", None)
+            limit = min(end, info.duration) if end is not None else info.duration
+            if limit <= 0:
+                return None
+            return int(limit // stride)
+        def _format_eta(seconds: float) -> str:
+            if seconds < 0 or not np.isfinite(seconds):
+                return "unknown"
+            seconds = int(seconds)
+            minutes, secs = divmod(seconds, 60)
+            hours, minutes = divmod(minutes, 60)
+            if hours:
+                return f"{hours}h{minutes:02d}m{secs:02d}s"
+            if minutes:
+                return f"{minutes}m{secs:02d}s"
+            return f"{secs}s"
 
         # Placeholder array to keep sample order for predictions on garbage data
         garbage_input = np.zeros(
@@ -82,6 +116,13 @@ class EmoW2V(Processor):
         garbage_output_prediction = np.zeros((3,), dtype=np.float32)
 
         for i, sample in enumerate(ds_iterator):
+            if total_frames is None:
+                total_frames = _compute_total_frames()
+                total_batches = (
+                    (total_frames + self.batch_size - 1) // self.batch_size
+                    if total_frames is not None
+                    else None
+                )
             sr = int(
                 ds_iterator.current_session.input_data[INPUT_ID].meta_data.sample_rate
             )
@@ -94,16 +135,60 @@ class EmoW2V(Processor):
             else:
                 # Preprocess input
                 sig_pp = np.squeeze(sample[INPUT_ID])
+                if sig_pp.size == 0:
+                    session_id = (
+                        getattr(ds_iterator.current_session, "name", None)
+                        or getattr(ds_iterator.current_session, "id", None)
+                        or getattr(ds_iterator.current_session, "session_id", None)
+                        or "unknown"
+                    )
+                    raise ValueError(
+                        f"Empty audio input at frame {i} in session {session_id}"
+                    )
                 if len(sig_pp.shape) > 1:
                     sig_pp = librosa.to_mono(np.swapaxes(sig_pp, 0, 1))
                 sig_pp = librosa.resample(sig_pp, orig_sr=sr, target_sr=self.model_sr)
+                if sig_pp.size < 10:
+                    session_id = (
+                        getattr(ds_iterator.current_session, "name", None)
+                        or getattr(ds_iterator.current_session, "id", None)
+                        or getattr(ds_iterator.current_session, "session_id", None)
+                        or "unknown"
+                    )
+                    raise ValueError(
+                        f"Audio input too short ({sig_pp.size} samples) at frame {i} "
+                        f"in session {session_id}; minimum 10 samples required"
+                    )
 
             current_batch.append(sig_pp)
 
             if i > 0 and i % self.batch_size == 0:
+                if self._device == "cuda":
+                    torch.cuda.synchronize()
                 pred = self._process_batch(current_batch)
+                if self._device == "cuda":
+                    torch.cuda.synchronize()
+                batch_idx = i // self.batch_size
+                batch_elapsed = perf_counter() - t_start
+                batch_rate = len(current_batch) / batch_elapsed
+                batches_done += 1
+                avg_batch_time = (perf_counter() - session_start) / batches_done
+                eta = (
+                    _format_eta((total_batches - batches_done) * avg_batch_time)
+                    if total_frames is not None
+                    else "unknown"
+                )
                 log(
-                    f"Batch {i / self.batch_size} : {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
+                    (
+                        f"Batch {batch_idx}/{total_batches} : "
+                        f"{int(batch_rate)} samples/s"
+                        f" | ETA {eta}"
+                    )
+                    if total_batches is not None
+                    else (
+                        f"Batch {batch_idx} : "
+                        f"{int(batch_rate)} samples/s"
+                    )
                 )
                 output_embeddings.append(pred[0].cpu().numpy())
                 output_predictions.append(pred[1].cpu().numpy())
@@ -112,9 +197,32 @@ class EmoW2V(Processor):
 
         # Process last batch
         if current_batch:
+            if self._device == "cuda":
+                torch.cuda.synchronize()
             pred = self._process_batch(current_batch)
+            if self._device == "cuda":
+                torch.cuda.synchronize()
+            batch_idx = (i // self.batch_size) + 1
+            batch_elapsed = perf_counter() - t_start
+            batch_rate = len(current_batch) / batch_elapsed
+            batches_done += 1
+            avg_batch_time = (perf_counter() - session_start) / batches_done
+            eta = (
+                _format_eta((total_batches - batches_done) * avg_batch_time)
+                if total_frames is not None
+                else "unknown"
+            )
             log(
-                f"Partial batch with {len(current_batch)} samples: {int((self.batch_size / (perf_counter() - t_start)))} samples/s"
+                (
+                    f"Partial batch {batch_idx}/{total_batches} with {len(current_batch)} samples: "
+                    f"{int(batch_rate)} samples/s"
+                    f" | ETA {eta}"
+                )
+                if total_batches is not None
+                else (
+                    f"Partial batch {batch_idx} with {len(current_batch)} samples: "
+                    f"{int(batch_rate)} samples/s"
+                )
             )
             output_embeddings.append(pred[0].cpu().numpy())
             output_predictions.append(pred[1].cpu().numpy())

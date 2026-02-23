@@ -2,4 +2,4 @@ hcai-discover-utils
 torch
 torchaudio
 librosa
-transformers
+transformers<5
