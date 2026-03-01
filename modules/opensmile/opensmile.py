@@ -2,6 +2,7 @@ import numpy as np
 import opensmile
 import pandas as pd
 import inspect
+import os
 from time import perf_counter
 from discover_utils.interfaces.server_module import Processor
 from discover_utils.data.stream import SSIStream
@@ -13,9 +14,8 @@ OUTPUT_ID = "output_stream"
 _default_options = {
     "feature_set": "eGeMAPSv02",
     "feature_lvl": "Functionals",
-    "file_level": True,
     "file_multiprocessing": True,
-    "file_num_workers": 0,
+    "file_num_workers": "0",
 }
 
 
@@ -37,9 +37,13 @@ class OpenSmile(Processor):
         self.media_type_id = (
             self.options["feature_set"] + "_" + self.options["feature_lvl"]
         )
-        self.file_level = bool(self.options["file_level"])
         self.file_multiprocessing = bool(self.options["file_multiprocessing"])
-        self.file_num_workers = int(self.options["file_num_workers"])
+        try:
+            self.file_num_workers = int(self.options["file_num_workers"])
+        except (TypeError, ValueError):
+            self.file_num_workers = 0
+        if self.file_num_workers <= 0:
+            self.file_num_workers = os.cpu_count() or 1
         self._file_level_segmented = False
 
         log(f'Initialized OpenSmile processor with feature set {self.feature_set} and feature level {self.feature_lvl}')
@@ -49,12 +53,20 @@ class OpenSmile(Processor):
             "feature_level": opensmile.FeatureLevel(self.feature_lvl),
         }
         smile_init_sig = inspect.signature(opensmile.Smile.__init__)
-        if self.file_num_workers > 0 and "num_workers" in smile_init_sig.parameters:
+        if "num_workers" in smile_init_sig.parameters:
             smile_kwargs["num_workers"] = self.file_num_workers
         if "multiprocessing" in smile_init_sig.parameters:
             smile_kwargs["multiprocessing"] = self.file_multiprocessing
 
         self.smile = opensmile.Smile(**smile_kwargs)
+        configured_workers = self._resolve_worker_count()
+        log(
+            "OpenSmile worker config: "
+            f"multiprocessing={self.file_multiprocessing}, "
+            f"requested_workers={self.file_num_workers}, "
+            f"workers={configured_workers if configured_workers is not None else 'unknown'}, "
+            f"cpu_count={os.cpu_count()}"
+        )
 
         self._dl = self.smile.feature_names
         self._dim_labels = [{"id": i, "name": x} for i, x in enumerate(self._dl)]
@@ -66,23 +78,29 @@ class OpenSmile(Processor):
         return ms / 1000.0
 
     @staticmethod
-    def _format_eta(seconds: float) -> str:
-        if seconds < 0 or not np.isfinite(seconds):
-            return "unknown"
-        seconds = int(seconds)
-        minutes, secs = divmod(seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours:
-            return f"{hours}h{minutes:02d}m{secs:02d}s"
-        if minutes:
-            return f"{minutes}m{secs:02d}s"
-        return f"{secs}s"
-
-    @staticmethod
     def _estimate_segments(duration_s: float, win_s: float, hop_s: float) -> int:
         if duration_s <= 0 or win_s <= 0 or hop_s <= 0:
             return 1
         return max(1, int(np.floor((duration_s - win_s + 1e-12) / hop_s) + 1))
+
+    def _resolve_worker_count(self):
+        candidates = [
+            ("num_workers",),
+            ("process", "num_workers"),
+            ("_process", "num_workers"),
+            ("process", "process", "num_workers"),
+        ]
+        for chain in candidates:
+            obj = self.smile
+            ok = True
+            for attr in chain:
+                if not hasattr(obj, attr):
+                    ok = False
+                    break
+                obj = getattr(obj, attr)
+            if ok and isinstance(obj, int):
+                return obj
+        return None
 
     @staticmethod
     def _frame_starts(duration_s: float, hop_s: float) -> np.ndarray:
@@ -171,127 +189,97 @@ class OpenSmile(Processor):
         samples as value. Can be overwritten to customize the processing"""
         ds_iterator: DatasetIterator
         self.ds_iterator = ds_iterator
-        if self.file_level:
-            left_s = self._to_seconds(ds_iterator.left_context)
-            frame_s = self._to_seconds(ds_iterator.frame_size)
-            right_s = self._to_seconds(ds_iterator.right_context)
-            win_s = left_s + frame_s + right_s
-            hop_s = self._to_seconds(ds_iterator.stride)
-            self._file_level_segmented = win_s > 0 and hop_s > 0
-            log(
-                "OpenSmile file-level mode: "
-                f"segmented={self._file_level_segmented}, "
-                f"left_s={left_s:.3f}, frame_s={frame_s:.3f}, right_s={right_s:.3f}, "
-                f"win_s={win_s:.3f}, hop_s={hop_s:.3f}, "
-                f"multiprocessing={self.file_multiprocessing}, "
-                f"num_workers={self.file_num_workers if self.file_num_workers > 0 else 'default'}"
-            )
-            output_list = []
-            total_sessions = len(ds_iterator.sessions)
-            session_times = []
-            for session_idx, (session_name, session) in enumerate(ds_iterator.sessions.items(), start=1):
-                t_start_session = perf_counter()
-                session_manager = session.get("manager")
-                if session_manager is None:
-                    log(f"Skipping session {session_name}: missing session manager")
-                    continue
-                session_manager.load()
-                ds_iterator.current_session = session_manager
-                ds_iterator.current_session_info = session.get("info")
-                audio = session_manager.input_data[INPUT_ID]
-                file_path = getattr(audio.meta_data, "file_path", None)
-                if file_path:
-                    if self._file_level_segmented:
-                        duration_ms = audio.meta_data.duration
-                        if duration_ms is None:
-                            duration_ms = getattr(ds_iterator.current_session_info, "duration", None)
-                        duration_s = self._to_seconds(duration_ms)
-                        est_segments = self._estimate_segments(duration_s, win_s, hop_s)
-                        log(
-                            f"Processing session {session_idx}/{total_sessions}: "
-                            f"{session_name}, duration={duration_s:.3f}s, segments~{est_segments}"
-                        )
-                        if duration_s <= 0:
-                            features = self.smile.process_file(str(file_path))
-                        else:
-                            features = self._segment_file_with_padding(
-                                file_path=str(file_path),
-                                audio_data=audio.data,
-                                sample_rate=int(audio.meta_data.sample_rate),
-                                duration_s=duration_s,
-                                left_s=left_s,
-                                frame_s=frame_s,
-                                right_s=right_s,
-                                hop_s=hop_s,
-                            )
-                    else:
-                        log(f"Processing session {session_idx}/{total_sessions}: {session_name}, full-file extraction")
-                        features = self.smile.process_file(str(file_path))
-                else:
-                    log(f"Processing session {session_idx}/{total_sessions}: {session_name}, in-memory signal fallback")
-                    self.input_sr = int(audio.meta_data.sample_rate)
-                    features = self.smile.process_signal(audio.data, self.input_sr)
-                output_list.append(features)
-                elapsed_session = perf_counter() - t_start_session
-                session_times.append(elapsed_session)
-                avg_session = sum(session_times) / len(session_times)
-                remaining = total_sessions - session_idx
-                eta = self._format_eta(remaining * avg_session)
-                rows = len(features) if hasattr(features, "__len__") else 0
-                log(
-                    f"Completed session {session_idx}/{total_sessions}: {session_name} "
-                    f"in {elapsed_session:.2f}s, rows={rows}, ETA={eta}"
-                )
-            output_list = pd.concat(output_list, ignore_index=True).to_numpy()
-            return output_list
-        # Start the stopwatch / counter
-        pc_start = perf_counter()
+        left_s = self._to_seconds(ds_iterator.left_context)
+        frame_s = self._to_seconds(ds_iterator.frame_size)
+        right_s = self._to_seconds(ds_iterator.right_context)
+        win_s = left_s + frame_s + right_s
+        hop_s = self._to_seconds(ds_iterator.stride)
+        self._file_level_segmented = win_s > 0 and hop_s > 0
+        log(
+            "OpenSmile file-level mode: "
+            f"segmented={self._file_level_segmented}, "
+            f"left_s={left_s:.3f}, frame_s={frame_s:.3f}, right_s={right_s:.3f}, "
+            f"win_s={win_s:.3f}, hop_s={hop_s:.3f}, "
+            f"multiprocessing={self.file_multiprocessing}"
+        )
         output_list = []
-        for i, sample in enumerate(ds_iterator):
-            self.input_sr = int(
-                ds_iterator.current_session.input_data[INPUT_ID].meta_data.sample_rate
+        total_sessions = len(ds_iterator.sessions)
+        for session_idx, (session_name, session) in enumerate(ds_iterator.sessions.items(), start=1):
+            t_start_session = perf_counter()
+            session_manager = session.get("manager")
+            if session_manager is None:
+                log(f"Skipping session {session_name}: missing session manager")
+                continue
+            session_manager.load()
+            ds_iterator.current_session = session_manager
+            ds_iterator.current_session_info = session.get("info")
+            audio = session_manager.input_data[INPUT_ID]
+            file_path = getattr(audio.meta_data, "file_path", None)
+            if file_path:
+                if self._file_level_segmented:
+                    duration_ms = audio.meta_data.duration
+                    if duration_ms is None:
+                        duration_ms = getattr(ds_iterator.current_session_info, "duration", None)
+                    duration_s = self._to_seconds(duration_ms)
+                    est_segments = self._estimate_segments(duration_s, win_s, hop_s)
+                    log(
+                        f"Processing session {session_idx}/{total_sessions}: "
+                        f"{session_name}, duration={duration_s:.3f}s, segments~{est_segments}"
+                    )
+                    if duration_s <= 0:
+                        features = self.smile.process_file(str(file_path))
+                    else:
+                        features = self._segment_file_with_padding(
+                            file_path=str(file_path),
+                            audio_data=audio.data,
+                            sample_rate=int(audio.meta_data.sample_rate),
+                            duration_s=duration_s,
+                            left_s=left_s,
+                            frame_s=frame_s,
+                            right_s=right_s,
+                            hop_s=hop_s,
+                        )
+                else:
+                    log(f"Processing session {session_idx}/{total_sessions}: {session_name}, full-file extraction")
+                    features = self.smile.process_file(str(file_path))
+            else:
+                log(f"Processing session {session_idx}/{total_sessions}: {session_name}, in-memory signal fallback")
+                self.input_sr = int(audio.meta_data.sample_rate)
+                features = self.smile.process_signal(audio.data, self.input_sr)
+            output_list.append(features)
+            # For very long files on constrained hardware, we can process segment jobs in batches
+            # and log progress/ETA per batch. This adds call overhead but improves observability.
+            elapsed_session = perf_counter() - t_start_session
+            rows = len(features) if hasattr(features, "__len__") else 0
+            log(
+                f"Completed session {session_idx}/{total_sessions}: {session_name} "
+                f"in {elapsed_session:.2f}s, rows={rows}"
             )
-            if i % 100 == 0:
-                log(
-                    f"Processing sample {i}. {i / (perf_counter() - pc_start)} samples / s. Processed {i * ds_iterator.stride / 1000} Seconds of data."
-                )
-            # for id, output_list in processed.items():
-            #     data_for_id = {id: sample[id]}
-            out = self.preprocess_sample(sample)
-            out = self.process_sample(out)
-            out = self.postprocess_sample(out)
-            output_list.append(out)
-
-        output_list = pd.concat(output_list).to_numpy()
-
+        output_list = pd.concat(output_list, ignore_index=True).to_numpy()
         return output_list
 
     def to_output(self, data: np.ndarray) -> dict:
         output_templates = self.ds_iterator.current_session.output_data_templates
-        if self.file_level:
-            if self._file_level_segmented and self.ds_iterator.stride and self.ds_iterator.stride > 0:
-                sample_rate = 1000.0 / self.ds_iterator.stride
-                chunks = None
-            else:
-                duration_ms = None
-                current_input = self.ds_iterator.current_session.input_data.get(INPUT_ID)
-                if current_input is not None:
-                    duration_ms = current_input.meta_data.duration
-                if duration_ms is None:
-                    current_info = getattr(self.ds_iterator, "current_session_info", None)
-                    duration_ms = getattr(current_info, "duration", None)
-                if duration_ms and duration_ms > 0:
-                    sample_rate = 1000.0 / duration_ms
-                    chunks = np.asarray(
-                        [(0.0, duration_ms / 1000.0, 0, 1)],
-                        dtype=SSIStream.CHUNK_DTYPE,
-                    )
-                else:
-                    sample_rate = 1.0
-                    chunks = None
-        else:
-            sample_rate = 1000 / self.ds_iterator.stride
+        if self._file_level_segmented and self.ds_iterator.stride and self.ds_iterator.stride > 0:
+            sample_rate = 1000.0 / self.ds_iterator.stride
             chunks = None
+        else:
+            duration_ms = None
+            current_input = self.ds_iterator.current_session.input_data.get(INPUT_ID)
+            if current_input is not None:
+                duration_ms = current_input.meta_data.duration
+            if duration_ms is None:
+                current_info = getattr(self.ds_iterator, "current_session_info", None)
+                duration_ms = getattr(current_info, "duration", None)
+            if duration_ms and duration_ms > 0:
+                sample_rate = 1000.0 / duration_ms
+                chunks = np.asarray(
+                    [(0.0, duration_ms / 1000.0, 0, 1)],
+                    dtype=SSIStream.CHUNK_DTYPE,
+                )
+            else:
+                sample_rate = 1.0
+                chunks = None
         output_templates[OUTPUT_ID] = SSIStream(
             data=data,
             sample_rate=sample_rate,

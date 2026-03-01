@@ -4,7 +4,7 @@ Currently, three standard sets are supported. ComParE 2016 is the largest with m
 
 Each feature set can be extracted on two levels:
 
-- `Low-level descriptors (LDD)`
+- `Low-level descriptors (LLD)`
 - `Functionals`
 
 For ComParE 2016 a third level is available:
@@ -12,6 +12,26 @@ For ComParE 2016 a third level is available:
 - `LLD deltas`
 
 https://audeering.github.io/opensmile-python
+
+## Processing
+The module now uses file-level processing by default. It segments each audio file based on trainer timing:
+
+- Window: `leftContext + frameStep + rightContext`
+- Hop: `frameStep` (via iterator stride default)
+
+Segment extraction is executed via `process_files(...)` with repeated file jobs for parallelism. Boundary windows are edge-padded (`mode='edge'`) to preserve output length at session borders.
+
+### Default timing and workers
+- `frameStep`: `40ms`
+- `leftContext`: `120ms`
+- `rightContext`: `120ms`
+- `file_num_workers`: `0` (auto, resolves to `os.cpu_count()`)
+
+`file_num_workers` can be set in trainer options to override auto worker selection.
+
+### Notes
+- Very short functional windows can still produce unstable values (especially F0-related features). In practice, windows around `>=60ms` are typically more stable than `40ms`.
+- For strict causal behavior, set `rightContext` to `0`.
 
 ## IO
 Explanation of inputs and outputs as specified in the trainer file
@@ -71,6 +91,8 @@ Copyright © 2008-2013, Institute for Human-Machine Communication, Technische Un
 Copyright © 2013-2015, audEERING UG (haftungsbeschränkt)
 
 Copyright © 2016-2020, audEERING GmbH
+
+
 
 
 

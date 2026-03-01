@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import inspect
+import os
 import sys
 import time
 import wave
@@ -59,6 +60,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--win-ms", type=float, default=40.0, help="Window length in ms")
     parser.add_argument("--hop-ms", type=float, default=40.0, help="Hop length in ms")
     parser.add_argument("--workers", type=int, default=4, help="Workers for multi-worker mode")
+    parser.add_argument("--inspect-workers", action="store_true", help="Print effective worker config for multiple Smile init variants")
+    parser.add_argument("--benchmark-worker-variants", action="store_true", help="Time process_files() for each worker variant")
     parser.add_argument("--sweep-start-ms", type=float, default=None, help="If set, sweep window/hop from this value upward until NaNs disappear")
     parser.add_argument("--sweep-step-ms", type=float, default=100.0, help="Sweep step size in ms")
     parser.add_argument("--sweep-max-ms", type=float, default=5000.0, help="Sweep max window/hop in ms")
@@ -87,6 +90,134 @@ def mk_smile(
     if multiprocessing is not None and "multiprocessing" in sig.parameters:
         kwargs["multiprocessing"] = bool(multiprocessing)
     return OSMILE.Smile(**kwargs)
+
+
+def _resolve_worker_count(smile) -> int | None:
+    candidates = [
+        ("num_workers",),
+        ("process", "num_workers"),
+        ("_process", "num_workers"),
+        ("process", "process", "num_workers"),
+    ]
+    for chain in candidates:
+        obj = smile
+        ok = True
+        for attr in chain:
+            if not hasattr(obj, attr):
+                ok = False
+                break
+            obj = getattr(obj, attr)
+        if ok and isinstance(obj, int):
+            return obj
+    return None
+
+
+def inspect_worker_variants(feature_set: str, feature_lvl: str, requested_workers: int) -> None:
+    sig = inspect.signature(OSMILE.Smile.__init__)
+    supports_num_workers = "num_workers" in sig.parameters
+    supports_multiprocessing = "multiprocessing" in sig.parameters
+    print(
+        f"[WORKERS] cpu_count={os.cpu_count()} "
+        f"supports_num_workers={supports_num_workers} "
+        f"supports_multiprocessing={supports_multiprocessing}"
+    )
+
+    variants = [
+        ("default", None, None),
+        ("multiprocessing_true_default_workers", None, True),
+        ("multiprocessing_false_default_workers", None, False),
+        ("multiprocessing_true_workers_cli", requested_workers, True),
+        ("multiprocessing_true_workers_cpu_count", os.cpu_count() or requested_workers, True),
+        ("multiprocessing_false_workers_cli", requested_workers, False),
+    ]
+    for name, workers, mp in variants:
+        smile = mk_smile(
+            feature_set=feature_set,
+            feature_lvl=feature_lvl,
+            num_workers=workers,
+            multiprocessing=mp,
+        )
+        effective = _resolve_worker_count(smile)
+        print(
+            f"[WORKERS] variant={name} requested_workers={workers} "
+            f"requested_multiprocessing={mp} effective_workers={effective if effective is not None else 'unknown'}"
+        )
+
+
+def benchmark_worker_variants(
+    audio_path: Path,
+    feature_set: str,
+    feature_lvl: str,
+    starts: np.ndarray,
+    ends: np.ndarray,
+    requested_workers: int,
+) -> None:
+    variants = [
+        ("default", None, None),
+        ("multiprocessing_true_default_workers", None, True),
+        ("multiprocessing_false_default_workers", None, False),
+        ("multiprocessing_true_workers_cli", requested_workers, True),
+        ("multiprocessing_true_workers_cpu_count", os.cpu_count() or requested_workers, True),
+        ("multiprocessing_false_workers_cli", requested_workers, False),
+    ]
+    files = [str(audio_path)] * len(starts)
+    print(f"[BENCH] variants={len(variants)} segments={len(starts)}")
+    for name, workers, mp in variants:
+        smile = mk_smile(
+            feature_set=feature_set,
+            feature_lvl=feature_lvl,
+            num_workers=workers,
+            multiprocessing=mp,
+        )
+        effective = _resolve_worker_count(smile)
+        t0 = time.perf_counter()
+        out = smile.process_files(
+            files,
+            starts=starts.tolist(),
+            ends=ends.tolist(),
+        )
+        dt = time.perf_counter() - t0
+        out = out.reset_index(drop=True)
+        nr = nan_ratio(out)
+        print(
+            f"[BENCH] variant={name} requested_workers={workers} requested_multiprocessing={mp} "
+            f"effective_workers={effective if effective is not None else 'unknown'} "
+            f"time={dt:.3f}s rows={len(out)} nan_ratio={nr:.6f}"
+        )
+
+    # Experimental variant: keep len(files)=cpu_count and split starts/ends per file.
+    # This only works if the installed opensmile/audinterface version supports
+    # nested starts/ends (one list of segments per file).
+    cpu_n = os.cpu_count() or requested_workers
+    starts_split = [x.tolist() for x in np.array_split(starts, cpu_n) if len(x) > 0]
+    ends_split = [x.tolist() for x in np.array_split(ends, cpu_n) if len(x) > 0]
+    files_split = [str(audio_path)] * len(starts_split)
+    smile = mk_smile(
+        feature_set=feature_set,
+        feature_lvl=feature_lvl,
+        num_workers=requested_workers,
+        multiprocessing=True,
+    )
+    effective = _resolve_worker_count(smile)
+    try:
+        t0 = time.perf_counter()
+        out = smile.process_files(
+            files_split,
+            starts=starts_split,
+            ends=ends_split,
+        )
+        dt = time.perf_counter() - t0
+        out = out.reset_index(drop=True)
+        nr = nan_ratio(out)
+        print(
+            f"[BENCH] variant=split_by_cpu_files requested_workers={requested_workers} "
+            f"requested_multiprocessing=True effective_workers={effective if effective is not None else 'unknown'} "
+            f"len_files={len(files_split)} time={dt:.3f}s rows={len(out)} nan_ratio={nr:.6f}"
+        )
+    except Exception as exc:
+        print(
+            f"[BENCH] variant=split_by_cpu_files len_files={len(files_split)} unsupported: {type(exc).__name__}: {exc}"
+        )
 
 
 def make_segments(duration_s: float, win_s: float, hop_s: float) -> tuple[np.ndarray, np.ndarray]:
@@ -237,6 +368,27 @@ def main() -> None:
     win_s = args.win_ms / 1000.0
     hop_s = args.hop_ms / 1000.0
     dur_s = wav_duration_seconds(args.audio)
+    if args.inspect_workers:
+        inspect_worker_variants(
+            feature_set=args.feature_set,
+            feature_lvl=args.feature_lvl,
+            requested_workers=args.workers,
+        )
+    if args.benchmark_worker_variants:
+        starts, ends = make_segments(
+            duration_s=dur_s,
+            win_s=args.win_ms / 1000.0,
+            hop_s=args.hop_ms / 1000.0,
+        )
+        benchmark_worker_variants(
+            audio_path=args.audio,
+            feature_set=args.feature_set,
+            feature_lvl=args.feature_lvl,
+            starts=starts,
+            ends=ends,
+            requested_workers=args.workers,
+        )
+
     if args.sweep_start_ms is not None:
         print(
             f"[SWEEP] file={args.audio} duration={dur_s:.3f}s "
