@@ -137,9 +137,11 @@ class EmoW2V(Processor):
                 sig_pp = np.squeeze(sample[INPUT_ID])
                 if sig_pp.size == 0:
                     session_id = (
-                        getattr(ds_iterator.current_session, "name", None)
+                        getattr(ds_iterator.current_session, "session", None)
+                        or getattr(ds_iterator.current_session, "name", None)
                         or getattr(ds_iterator.current_session, "id", None)
                         or getattr(ds_iterator.current_session, "session_id", None)
+                        or getattr(getattr(ds_iterator, "current_session_info", None), "session", None)
                         or "unknown"
                     )
                     raise ValueError(
@@ -150,9 +152,11 @@ class EmoW2V(Processor):
                 sig_pp = librosa.resample(sig_pp, orig_sr=sr, target_sr=self.model_sr)
                 if sig_pp.size < 10:
                     session_id = (
-                        getattr(ds_iterator.current_session, "name", None)
+                        getattr(ds_iterator.current_session, "session", None)
+                        or getattr(ds_iterator.current_session, "name", None)
                         or getattr(ds_iterator.current_session, "id", None)
                         or getattr(ds_iterator.current_session, "session_id", None)
+                        or getattr(getattr(ds_iterator, "current_session_info", None), "session", None)
                         or "unknown"
                     )
                     raise ValueError(
