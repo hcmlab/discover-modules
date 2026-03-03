@@ -9,7 +9,7 @@ import torch
 from discover_utils.utils.type_definitions import SSINPDataType
 from discover_utils.data.stream import SSIStream
 
-_default_options = {'model_path': "cardiffnlp/twitter-xlm-roberta-base-sentiment"}
+_default_options = {'model_path': "cardiffnlp/twitter-xlm-roberta-base-sentiment-multilingual"}
 _dim_labels = [
     "sentiment",
 ]
@@ -152,5 +152,4 @@ if __name__ == '__main__':
     emotions = gs.process_data(ds_iterator)
     output = gs.to_output(emotions)
     breakpoint()
-
 
