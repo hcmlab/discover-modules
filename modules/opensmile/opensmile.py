@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import opensmile
 import pandas as pd
@@ -45,6 +46,10 @@ class OpenSmile(Processor):
         self._dim_labels = [{"id": i, "name": x} for i, x in enumerate(self._dl)]
 
     def process_sample(self, sample):
+        # DatasetIterator returns Audio as (num_samples, num_channels)
+        # opensmile expects (num_channels, num_samples) or (num_samples,)
+        if sample.ndim == 2:
+            sample = sample.T
         features = self.smile.process_signal(sample, self.input_sr)
         return features
 
