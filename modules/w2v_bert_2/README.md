@@ -1,8 +1,9 @@
 # Wav2VecBert2
 
-Facebook open-sourced the Conformer-based W2v-BERT 2.0 speech encoder as described in Section 3.2.1 of the paper below, which is at the core of the Seamless models.
-The model was pre-trained on 4.5M hours of unlabeled audio data across more than 143 languages.
-It requires fine-tuning for downstream tasks such as ASR or audio classification.
+Facebook opensourced Conformer-based W2v-BERT 2.0 speech encoder as described in Section 3.2.1 of the [paper](https://arxiv.org/pdf/2312.05187.pdf), which is at the core of the 
+Seamless models.
+This model was pre-trained on 4.5M hours of unlabeled audio data covering more than 143 languages. 
+It requires fine-tuning to be used for downstream tasks such as Automatic Speech Recognition (ASR), or Audio Classification.
 
 * https://arxiv.org/pdf/2312.05187.pdf
 * https://huggingface.co/facebook/w2v-bert-2.0#w2v-bert-20-speech-encoder
@@ -23,15 +24,17 @@ If you set larger context windows, the module pools embeddings over:
 Explanation of inputs and outputs as specified in the trainer file:
 
 ### Input
-- `audio` (`Audio`): Audio stream to encode
+- `audio` (`Audio`): The video input on which the model should detect the faces
 
 ### Output
-- `embeddings` (`SSIStream`): 1024-dimensional frame-wise embeddings
+The output of the model are three continuous annotations:
+- `embeddings` (`SSIStream`): The 1024 feature embeddings of the trained model.
 
 ## Options
-- `batch_size` (`int`): `250`, processing batch size
+- `batch_size` (`int`) : `250`, batch size in which the data is processed:
 
-## Example
+
+## Examples
 
 ### Request
 
@@ -67,3 +70,7 @@ print(x.text)
 
 ## License
 MIT
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

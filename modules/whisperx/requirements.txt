@@ -1,5 +1,7 @@
-numpy<2
+numpy==2.2.6
 hcai-discover-utils
-torch==2.3.1
-whisperx @ git+https://github.com/m-bain/whisperx.git@v3.2.0
+torch==2.8.0
+torchaudio==2.8.0
+whisperx==3.8.1
+#whisperx @ git+https://github.com/m-bain/whisperx.git@v3.2.0
 #@ git+https://github.com/m-bain/whisperx.git@9e3a9e0
