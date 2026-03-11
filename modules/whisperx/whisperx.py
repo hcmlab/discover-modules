@@ -1,11 +1,47 @@
 """WhisperX Module
-Author: Dominik Schiller <dominik.schiller@uni-a.de>, Tobias Hallmen <tobias.hallmen@uni-a.de>
+Author: Dominik Schiller <dominik.schiller@uni-a.de>, Tobias Hallmen <tobias.hallmen@uni-a.de>>
 Date: 18.10.2023
 
 """
 
 from discover_utils.interfaces.server_module import Processor
+from pathlib import Path
 import sys
+
+
+def _ensure_whisperx():
+    try:
+        import whisperx
+        return
+    except ImportError:
+        pass
+
+    import subprocess, shutil, os
+
+    # Install FFmpeg system libraries required to build the 'av' package
+    ffmpeg_dev_pkgs = [
+        'ffmpeg', 'libavformat-dev', 'libavcodec-dev', 'libavdevice-dev',
+        'libavutil-dev', 'libavfilter-dev', 'libswscale-dev', 'libswresample-dev',
+    ]
+    env = {**os.environ, 'DEBIAN_FRONTEND': 'noninteractive'}
+
+    if shutil.which('apt-get'):
+        print('whisperx missing — installing FFmpeg libraries via apt-get...')
+        subprocess.run(['sudo', 'apt-get', 'install', '-y', '-q'] + ffmpeg_dev_pkgs,
+                       env=env, check=True)
+    elif shutil.which('brew'):
+        print('whisperx missing — installing FFmpeg via brew...')
+        subprocess.run(['brew', 'install', 'ffmpeg'], check=True)
+    else:
+        raise RuntimeError(
+            'whisperx is not installed and FFmpeg system libraries could not be installed '
+            'automatically. Please install them manually:\n'
+            '  sudo apt-get install -y ' + ' '.join(ffmpeg_dev_pkgs)
+        )
+
+    # Re-run pip install with FFmpeg headers now available
+    reqs = Path(__file__).parent / 'requirements.txt'
+    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', str(reqs)], check=True)
 
 
 INPUT_ID = "audio"
@@ -24,6 +60,7 @@ _default_options = {"model": "tiny", "alignment_mode": "segment", "batch_size": 
 #  apparently whisperx is also a dead project by now (october 2024)
 class WhisperX(Processor):
     def __init__(self, *args, **kwargs):
+        _ensure_whisperx()
         super().__init__(*args, **kwargs)
         self.options = _default_options | self.options
         
