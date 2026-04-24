@@ -25,9 +25,11 @@ Segment extraction is executed via `process_files(...)` with repeated file jobs 
 - `frameStep`: `40ms`
 - `leftContext`: `120ms`
 - `rightContext`: `120ms`
-- `file_num_workers`: `0` (auto, resolves to `os.cpu_count()`)
+- `file_num_workers`: `0` (auto, resolves to `min(os.cpu_count(), 8)`)
 
-`file_num_workers` can be set in trainer options to override auto worker selection.
+`file_num_workers` can be set in trainer options to override auto worker selection. The auto default is capped at 8: very high worker counts (e.g. 32 on a 32-core box) multiply peak memory per call and, when a worker is OOM-killed, leak POSIX semaphores under `/dev/shm` that accumulate across sessions and can cause `process_files()` to hang silently after many sessions (BrokenProcessPool followed by no further log output). If you have plenty of RAM headroom you can raise this explicitly.
+
+Inside each session, segment jobs are dispatched to `process_files()` in batches of 8000 segments so peak memory per call is bounded regardless of total session length. Audio buffers are released between sessions and a `gc.collect()` is forced so any transient multiprocessing resources are reclaimed before the next session runs.
 
 ### Notes
 - Very short functional windows can still produce unstable values (especially F0-related features). In practice, windows around `>=60ms` are typically more stable than `40ms`.

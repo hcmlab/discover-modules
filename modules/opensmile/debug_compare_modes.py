@@ -65,6 +65,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sweep-start-ms", type=float, default=None, help="If set, sweep window/hop from this value upward until NaNs disappear")
     parser.add_argument("--sweep-step-ms", type=float, default=100.0, help="Sweep step size in ms")
     parser.add_argument("--sweep-max-ms", type=float, default=5000.0, help="Sweep max window/hop in ms")
+    parser.add_argument("--verify-batching", action="store_true", help="Check that segment batching in _segment_file_with_padding produces row-for-row identical output to the unbatched path")
+    parser.add_argument("--verify-batch-sizes", type=int, nargs="+", default=[50, 100, 8000], help="Batch sizes to compare against an unbatched reference when --verify-batching is set")
     return parser.parse_args()
 
 
@@ -360,6 +362,139 @@ def nan_ratio(frame: pd.DataFrame) -> float:
     return float(np.isnan(arr).sum() / arr.size)
 
 
+def verify_batching(
+    audio_path: Path,
+    feature_set: str,
+    feature_lvl: str,
+    win_ms: float,
+    hop_ms: float,
+    batch_sizes: list[int],
+) -> None:
+    """Compare the local opensmile.py _segment_file_with_padding output against
+    itself with different _SEGMENT_BATCH_SIZE values. All batch sizes must yield
+    row-for-row identical frames, otherwise batching reordered or duplicated segments.
+    """
+    import importlib.util
+    import types
+    import wave
+
+    mod_dir = Path(__file__).resolve().parent
+    # Stub discover_utils so we can import opensmile.py in isolation without
+    # pulling the full server runtime.
+    fake_du = types.ModuleType("discover_utils")
+    fake_intf = types.ModuleType("discover_utils.interfaces")
+    fake_server = types.ModuleType("discover_utils.interfaces.server_module")
+
+    class _FakeProcessor:
+        def __init__(self, *a, **kw):
+            self.options = kw.get("opts", {}) or {}
+
+    fake_server.Processor = _FakeProcessor
+    fake_data = types.ModuleType("discover_utils.data")
+    fake_stream = types.ModuleType("discover_utils.data.stream")
+
+    class _FakeSSIStream:
+        CHUNK_DTYPE = np.dtype([("a", "f8")])
+
+        def __init__(self, *a, **kw):
+            self.__dict__.update(kw)
+
+    fake_stream.SSIStream = _FakeSSIStream
+    fake_utils = types.ModuleType("discover_utils.utils")
+    fake_logu = types.ModuleType("discover_utils.utils.log_utils")
+    fake_logu.log = lambda msg: None
+    for m in (fake_du, fake_intf, fake_server, fake_data, fake_stream, fake_utils, fake_logu):
+        sys.modules.setdefault(m.__name__, m)
+    sys.modules["discover_utils.interfaces.server_module"] = fake_server
+    sys.modules["discover_utils.data.stream"] = fake_stream
+    sys.modules["discover_utils.utils.log_utils"] = fake_logu
+
+    spec = importlib.util.spec_from_file_location("patched_os_module", mod_dir / "opensmile.py")
+    patched = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(patched)
+
+    with wave.open(str(audio_path), "rb") as wf:
+        sr = wf.getframerate()
+        nframes = wf.getnframes()
+        dur_s = nframes / sr
+        sampwidth = wf.getsampwidth()
+        wf.rewind()
+        raw = wf.readframes(nframes)
+    dtype = {1: np.int8, 2: np.int16, 4: np.int32}.get(sampwidth)
+    if dtype is None:
+        raise ValueError(f"Unsupported sample width: {sampwidth}")
+    audio = np.frombuffer(raw, dtype=dtype).astype(np.float32)
+    if np.issubdtype(dtype, np.integer):
+        audio /= float(np.iinfo(dtype).max)
+
+    class _Stub(patched.OpenSmile):
+        def __init__(self_inner):
+            self_inner.options = {
+                "feature_set": feature_set,
+                "feature_lvl": feature_lvl,
+                "file_multiprocessing": False,
+                "file_num_workers": "1",
+            }
+            self_inner.feature_set = OSMILE.FeatureSet.__members__[feature_set].value
+            self_inner.feature_lvl = OSMILE.FeatureLevel.__members__[feature_lvl].value
+            self_inner.input_sr = 16000
+            self_inner.media_type_id = f"{feature_set}_{feature_lvl}"
+            self_inner.file_multiprocessing = False
+            self_inner.file_num_workers = 1
+            self_inner._file_level_segmented = False
+            smile_kwargs = {
+                "feature_set": OSMILE.FeatureSet(self_inner.feature_set),
+                "feature_level": OSMILE.FeatureLevel(self_inner.feature_lvl),
+            }
+            sig = inspect.signature(OSMILE.Smile.__init__)
+            if "num_workers" in sig.parameters:
+                smile_kwargs["num_workers"] = 1
+            if "multiprocessing" in sig.parameters:
+                smile_kwargs["multiprocessing"] = False
+            self_inner.smile = OSMILE.Smile(**smile_kwargs)
+            self_inner._dl = self_inner.smile.feature_names
+            self_inner._dim_labels = [{"id": i, "name": x} for i, x in enumerate(self_inner._dl)]
+
+    proc = _Stub()
+    left_s = 0.120
+    frame_s = win_ms / 1000.0
+    right_s = 0.120
+    hop_s = hop_ms / 1000.0
+
+    def run(batch_size):
+        patched._SEGMENT_BATCH_SIZE = batch_size
+        return proc._segment_file_with_padding(
+            file_path=str(audio_path),
+            audio_data=audio,
+            sample_rate=sr,
+            duration_s=dur_s,
+            left_s=left_s,
+            frame_s=frame_s,
+            right_s=right_s,
+            hop_s=hop_s,
+        )
+
+    ref = run(10_000_000).to_numpy(dtype=np.float64, copy=False)
+    print(f"[VERIFY] reference rows={ref.shape[0]} cols={ref.shape[1]} (unbatched)")
+    failures = 0
+    for bs in batch_sizes:
+        got = run(bs).to_numpy(dtype=np.float64, copy=False)
+        if got.shape != ref.shape:
+            print(f"[VERIFY] batch={bs} FAIL shape mismatch {got.shape} vs {ref.shape}")
+            failures += 1
+            continue
+        diff = np.abs(got - ref)
+        finite = np.isfinite(diff)
+        max_abs = float(diff[finite].max()) if finite.any() else float("nan")
+        exact = np.array_equal(np.nan_to_num(got), np.nan_to_num(ref))
+        status = "OK" if exact else "FAIL"
+        print(f"[VERIFY] batch={bs} {status} rows={got.shape[0]} max_abs_diff={max_abs:.3e}")
+        failures += int(not exact)
+    if failures:
+        raise SystemExit(f"[VERIFY] {failures}/{len(batch_sizes)} batch sizes diverged from unbatched reference")
+    print(f"[VERIFY] all {len(batch_sizes)} batch sizes identical to unbatched reference")
+
+
 def main() -> None:
     args = parse_args()
     if not args.audio.exists():
@@ -368,6 +503,16 @@ def main() -> None:
     win_s = args.win_ms / 1000.0
     hop_s = args.hop_ms / 1000.0
     dur_s = wav_duration_seconds(args.audio)
+    if args.verify_batching:
+        verify_batching(
+            audio_path=args.audio,
+            feature_set=args.feature_set,
+            feature_lvl=args.feature_lvl,
+            win_ms=args.win_ms,
+            hop_ms=args.hop_ms,
+            batch_sizes=args.verify_batch_sizes,
+        )
+        return
     if args.inspect_workers:
         inspect_worker_variants(
             feature_set=args.feature_set,

@@ -1,3 +1,4 @@
+import gc
 import numpy as np
 import opensmile
 import pandas as pd
@@ -11,12 +12,36 @@ from discover_utils.utils.log_utils import log
 INPUT_ID = "input_audio"
 OUTPUT_ID = "output_stream"
 
+# Cap default worker count. 32+ workers on large audio blows up memory and
+# leaks /dev/shm semaphores when workers are OOM-killed, which accumulates
+# across sessions until process_files() hangs silently.
+_DEFAULT_MAX_WORKERS = 8
+# Batch segment count for a single process_files() call. Bounds peak RAM per
+# call and gives the OS a chance to reclaim between calls.
+_SEGMENT_BATCH_SIZE = 8000
+
 _default_options = {
     "feature_set": "eGeMAPSv02",
     "feature_lvl": "Functionals",
     "file_multiprocessing": True,
     "file_num_workers": "0",
 }
+
+
+def _parse_bool(value, default=True):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("true", "1", "yes", "on"):
+            return True
+        if v in ("false", "0", "no", "off", ""):
+            return False
+    return default
 
 
 class OpenSmile(Processor):
@@ -37,13 +62,15 @@ class OpenSmile(Processor):
         self.media_type_id = (
             self.options["feature_set"] + "_" + self.options["feature_lvl"]
         )
-        self.file_multiprocessing = bool(self.options["file_multiprocessing"])
+        self.file_multiprocessing = _parse_bool(
+            self.options["file_multiprocessing"], default=True
+        )
         try:
             self.file_num_workers = int(self.options["file_num_workers"])
         except (TypeError, ValueError):
             self.file_num_workers = 0
         if self.file_num_workers <= 0:
-            self.file_num_workers = os.cpu_count() or 1
+            self.file_num_workers = min(os.cpu_count() or 1, _DEFAULT_MAX_WORKERS)
         self._file_level_segmented = False
 
         log(f'Initialized OpenSmile processor with feature set {self.feature_set} and feature level {self.feature_lvl}')
@@ -148,14 +175,21 @@ class OpenSmile(Processor):
         rows: list[pd.DataFrame | None] = [None] * len(frame_starts)
 
         if inside_idx.size > 0:
-            inside_files = [str(file_path)] * int(inside_idx.size)
-            inside = self.smile.process_files(
-                inside_files,
-                starts=win_starts[inside_idx].tolist(),
-                ends=win_ends[inside_idx].tolist(),
-            ).reset_index(drop=True)
-            for j, idx in enumerate(inside_idx):
-                rows[int(idx)] = inside.iloc[[j]]
+            total_inside = int(inside_idx.size)
+            batch = max(1, _SEGMENT_BATCH_SIZE)
+            for b_start in range(0, total_inside, batch):
+                b_end = min(b_start + batch, total_inside)
+                sub_idx = inside_idx[b_start:b_end]
+                inside_files = [str(file_path)] * int(sub_idx.size)
+                inside = self.smile.process_files(
+                    inside_files,
+                    starts=win_starts[sub_idx].tolist(),
+                    ends=win_ends[sub_idx].tolist(),
+                ).reset_index(drop=True)
+                for j, idx in enumerate(sub_idx):
+                    rows[int(idx)] = inside.iloc[[j]]
+                del inside
+                gc.collect()
 
         if edge_idx.size > 0:
             if audio_data is None:
@@ -247,14 +281,21 @@ class OpenSmile(Processor):
                 self.input_sr = int(audio.meta_data.sample_rate)
                 features = self.smile.process_signal(audio.data, self.input_sr)
             output_list.append(features)
-            # For very long files on constrained hardware, we can process segment jobs in batches
-            # and log progress/ETA per batch. This adds call overhead but improves observability.
             elapsed_session = perf_counter() - t_start_session
             rows = len(features) if hasattr(features, "__len__") else 0
             log(
                 f"Completed session {session_idx}/{total_sessions}: {session_name} "
                 f"in {elapsed_session:.2f}s, rows={rows}"
             )
+            # Drop the large audio buffer we only needed for edge padding and
+            # force a GC cycle so buffers/semaphores are released before the
+            # next session's process_files() call.
+            try:
+                audio.data = None
+            except Exception:
+                pass
+            del features
+            gc.collect()
         output_list = pd.concat(output_list, ignore_index=True).to_numpy()
         return output_list
 
