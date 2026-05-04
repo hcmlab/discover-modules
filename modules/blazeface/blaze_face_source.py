@@ -426,9 +426,12 @@ class _BlazeFace(nn.Module):
         estimates the regression parameters of a bounding box as a weighted
         mean between the overlapping predictions."
 
-        The original MediaPipe code assigns the score of the most confident
-        detection to the weighted detection, but we take the average score
-        of the overlapping detections.
+        Bounding box and landmark coordinates are blended across overlapping
+        anchors weighted by their scores. The reported confidence is the
+        score of the most confident (top) anchor in the cluster, matching
+        the original MediaPipe implementation. (Hollemans' upstream port
+        averaged the cluster scores instead, which artificially deflates
+        the reported confidence when min_score_thresh is low.)
 
         The input detections should be a Tensor of shape (count, 17).
 
@@ -471,7 +474,7 @@ class _BlazeFace(nn.Module):
                 total_score = scores.sum()
                 weighted = (coordinates * scores).sum(dim=0) / total_score
                 weighted_detection[:16] = weighted
-                weighted_detection[16] = total_score / len(overlapping)
+                # weighted_detection[16] keeps the top anchor's score from detection.clone()
 
             output_detections.append(weighted_detection)
 

@@ -34,7 +34,11 @@ OUTPUT_ID_EMBEDDING = "embedding"
 _default_options = {
     "num_expressions": 8,
     "batch_size": 16,
-    "face_detection_min_conf" : 0.8,
+    # Default matches BlazeFace's _default_options["min_score_thresh"] (0.5)
+    # so a frame BlazeFace accepted as a face is also scored by EmoNet.
+    # Previously 0.8, which silently re-filtered the bbox stream and
+    # discarded frames in the [0.5, 0.8) confidence band.
+    "face_detection_min_conf" : 0.5,
     "temporal_smoothing": False
 }
 
