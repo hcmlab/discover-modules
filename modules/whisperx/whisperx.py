@@ -58,6 +58,33 @@ class WhisperX(Processor):
     def process_data(self, ds_manager) -> dict:
         import whisperx
         import torch
+
+        # PyTorch >=2.6 defaults torch.load to weights_only=True, which rejects the
+        # pyannote VAD checkpoints (they pickle omegaconf objects, e.g. ListConfig).
+        # pyannote-audio 3.x calls torch.load without weights_only=False, so force it
+        # here. Safe because every checkpoint loaded by this module comes from a
+        # trusted source (official pyannote/whisper/wav2vec weights and our own DB).
+        if not getattr(torch.load, "_weights_only_patched", False):
+            _orig_torch_load = torch.load
+
+            def _torch_load_full(*args, **kwargs):
+                # Force override: lightning/pyannote pass weights_only=True explicitly,
+                # so setdefault is not enough.
+                kwargs["weights_only"] = False
+                return _orig_torch_load(*args, **kwargs)
+
+            _torch_load_full._weights_only_patched = True
+            torch.load = _torch_load_full
+
+        # Suppress benign per-session warnings from the bundled pyannote VAD asset
+        # (placeholder version metadata) and the lightning checkpoint auto-upgrade.
+        import warnings
+        warnings.filterwarnings("ignore", message="Model was trained with")
+        warnings.filterwarnings("ignore", message="Lightning automatically upgraded")
+        import logging
+        logging.getLogger("pytorch_lightning.utilities.migration").setLevel(logging.ERROR)
+        logging.getLogger("lightning_fabric.utilities.cloud_io").setLevel(logging.ERROR)
+
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.session_manager = self.get_session_manager(ds_manager)
         input_audio = self.session_manager.input_data['audio']
