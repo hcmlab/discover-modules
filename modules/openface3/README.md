@@ -42,9 +42,14 @@ Outputs:
 - The expression head is fragile on small faces: on a real webcam session
   (~100 px face) it over-predicted Fear (65% of frames, rising with larger
   margins) where emonet/emotiefflib/libreface agreed on Neutral/Happy.
-  Verified not to be a porting bug (bit-identical to the audit wrapper).
-  Treat the AUs, gaze and embeddings as this module's primary outputs and
-  prefer emotiefflib for expression unless faces are large and well-lit.
+  Verified not to be a porting bug (bit-identical to the audit wrapper) and
+  not fixable by upsampling: LANCZOS/BICUBIC/NEAREST pre-upscaling to 224
+  leaves the skew intact, and a controlled test (one AffectNet face,
+  LANCZOS-downscaled) flips Happy -> Surprise at 150 px -> Disgust at
+  <= 100 px, i.e. the information is gone, not badly resampled. Treat
+  expression as unreliable below roughly 200 px face height; the AUs, gaze
+  and embeddings degrade more gracefully, and emotiefflib stays stable on
+  the same 100 px crops.
 - Weights (MTL_backbone.pth) come from the huggingface mirror
   nutPace/openface_weights via the nova-server cache (hash-pinned).
 
