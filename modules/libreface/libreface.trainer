@@ -1,12 +1,13 @@
 <?xml version="1.0" ?>
 <trainer ssi-v="5">
 <info trained="true"/>
-<meta backend="nova-server" category="Face" description="Aligns face for downstream LibreFace AU and FER predictions" is_iterable="False">
+<meta backend="nova-server" category="Face" description="Aligns face (GPU) and predicts LibreFace AUs (detection + intensity), facial expression and embeddings" is_iterable="False">
     <io type="input" id="video" data="stream:Video" default_value="video" />
     <io type="input" id="facemesh" data="stream:SSIStream:feature;face;landmarks:facemesh" default_value="face_mesh" />
     <io type="output" id="libreface_stream" data="stream:SSIStream:feature;face;libreface" default_value="libreface" />
     <io type="output" id="libreface_emotion" data="annotation:Discrete" default_value="emotion" />
     <io type="output" id="aligned" data="stream:Video" default_value="face_aligned" />
+    <io type="output" id="embedding" data="stream:SSIStream" default_value="libreface_embedding" />
 </meta>
-<model create="LibreFace" script="libreface_script.py" optstr="{batch_size:STRING:256}"/>
+<model create="LibreFace" script="libreface_script.py" optstr="{batch_size:STRING:256};{min_conf:STRING:0.5}"/>
 </trainer>

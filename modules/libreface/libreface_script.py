@@ -1,294 +1,344 @@
 """
 LibreFace Module
 Author: Tobias Hallmen <tobias.hallmen@uni-a.de>
-Date: 20.02.2025
+Date: 02.07.2026
 cf. https://github.com/ihp-lab/LibreFace
+
+Rewrite of the original module (pure PyTorch since pip libreface, no ONNX):
+
+- Face alignment (FFHQ-style, from facemesh landmarks) now runs BATCHED ON THE
+  GPU via torch.affine_grid/grid_sample instead of the per-frame PIL/scipy warp
+  in a multiprocess pool. The FFHQ quad is a parallelogram, so the quad-to-square
+  mapping is exactly affine; we sample at 512 and antialias-downscale to 256,
+  mirroring FFHQ's transform_size=512 -> LANCZOS 256. The old CPU path made the
+  whole module CPU-bound while the GPU idled.
+- The three torch models (combined AU detection+intensity, FER, none reloaded
+  per batch anymore: the upstream *_video() helpers construct the solver and
+  re-download/load weights on EVERY call) are built once in __init__ and reused.
+- FER now outputs a real softmax confidence instead of a constant 1.0, plus the
+  penultimate features as an embedding stream.
+- Frames whose facemesh confidence is below min_conf get the rest class /
+  zeroed outputs instead of a mean-gray warp.
+
+Gaze / head pose are NOT computed: upstream derives them from iris-refined
+MediaPipe landmarks (incl. z) on the aligned crop, which the facemesh stream
+does not carry; running MediaPipe per frame would reintroduce the CPU
+bottleneck this rewrite removes.
 """
 
 import os
+import sys
+
+# Add local dir to path for relative imports
+if (p := os.path.dirname(__file__)) not in sys.path:
+    sys.path.insert(0, p)
+
 import numpy as np
-import scipy.ndimage
-from PIL import Image
-from multiprocess import Pool
+import torch
+import torch.nn.functional as F
+
+from discover_utils.data.annotation import DiscreteAnnotationScheme
+from discover_utils.data.stream import SSIStream, Video
+from discover_utils.data.static import Image
 from discover_utils.interfaces.server_module import Processor
 from discover_utils.utils.log_utils import log
-from time import perf_counter
-from discover_utils.data.stream import SSIStream, Video
-import sys
-if (p := __file__[:-1-len(__file__.split(os.sep)[-1])]) not in sys.path:  # <path>/libreface_script.py -> <path> for imports from <libreface> folder
-    sys.path.insert(0, p)
-import platform
-from libreface.AU_Recognition.inference import get_au_intensities_and_detect_aus_video
-from libreface.Facial_Expression_Recognition.inference import get_facial_expression_video
-import torch
-import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
+from discover_utils.utils.type_definitions import SSINPDataType
 
-
-def image_align(img, face_landmarks, output_size=256,  # their shared onnx models expect 224 instead of 256
-                transform_size=512, enable_padding=True, x_scale=1,
-                y_scale=1, em_scale=0.1, alpha=False, pad_mode='const'):
-    # img = my_draw_image_by_points(img, face_landmarks[36:60], 1, (0,255,0))
-    # Align function from FFHQ dataset pre-processing step
-    # https://github.com/NVlabs/ffhq-dataset/blob/master/download_ffhq.py
-
-    # import PIL.Image
-    # import scipy.ndimage
-    # print(img.size)
-    lm = np.array(face_landmarks)
-    lm[:, 0] *= img.size[0]
-    lm[:, 1] *= img.size[1]
-    # lm_chin          = lm[0  : 17]  # left-right
-    # lm_eyebrow_left  = lm[17 : 22]  # left-right
-    # lm_eyebrow_right = lm[22 : 27]  # left-right
-    # lm_nose          = lm[27 : 31]  # top-down
-    # lm_nostrils      = lm[31 : 36]  # top-down
-    lm_eye_right = lm[0:16]
-    lm_eye_left = lm[16:32]
-    lm_mouth_outer = lm[32:]
-    # lm_mouth_inner   = lm[60 : 68]  # left-clockwise
-    lm_mouth_outer_x = lm_mouth_outer[:, 0].tolist()
-    left_index = lm_mouth_outer_x.index(min(lm_mouth_outer_x))
-    right_index = lm_mouth_outer_x.index(max(lm_mouth_outer_x))
-    # print(left_index,right_index)
-    # Calculate auxiliary vectors.
-    eye_left = np.mean(lm_eye_left, axis=0)
-    # eye_left[[0,1]] = eye_left[[1,0]]
-    eye_right = np.mean(lm_eye_right, axis=0)
-    # eye_right[[0,1]] = eye_right[[1,0]]
-    eye_avg = (eye_left + eye_right) * 0.5
-    eye_to_eye = eye_right - eye_left
-    # print(lm_mouth_outer)s
-    mouth_avg = (lm_mouth_outer[left_index, :] + lm_mouth_outer[right_index, :]) / 2.0
-    # mouth_avg[[0,1]] = mouth_avg[[1,0]]
-
-    eye_to_mouth = mouth_avg - eye_avg
-    # Choose oriented crop rectangle.
-    x = eye_to_eye - np.flipud(eye_to_mouth) * [-1, 1]
-    x /= np.hypot(*x)
-    x *= max(np.hypot(*eye_to_eye) * 2.0, np.hypot(*eye_to_mouth) * 1.8)
-    x *= x_scale
-    y = np.flipud(x) * [-y_scale, y_scale]
-    c = eye_avg + eye_to_mouth * em_scale
-    quad = np.stack([c - x - y, c - x + y, c + x + y, c + x - y])
-    qsize = np.hypot(*x) * 2
-
-    # Shrink.
-    shrink = int(np.floor(qsize / output_size * 0.5))
-    if shrink > 1:
-        rsize = (int(np.rint(float(img.size[0]) / shrink)), int(np.rint(float(img.size[1]) / shrink)))
-        img = img.resize(rsize, Image.LANCZOS)
-        quad /= shrink
-        qsize /= shrink
-
-    # Crop.
-    border = max(int(np.rint(qsize * 0.1)), 3)
-    crop = (int(np.floor(min(quad[:, 0]))), int(np.floor(min(quad[:, 1]))), int(np.ceil(max(quad[:, 0]))),
-            int(np.ceil(max(quad[:, 1]))))
-    crop = (max(crop[0] - border, 0), max(crop[1] - border, 0), min(crop[2] + border, img.size[0]),
-            min(crop[3] + border, img.size[1]))
-    if crop[2] - crop[0] < img.size[0] or crop[3] - crop[1] < img.size[1]:
-        img = img.crop(crop)
-        quad -= crop[0:2]
-
-    # Pad.
-    pad = (int(np.floor(min(quad[:, 0]))), int(np.floor(min(quad[:, 1]))), int(np.ceil(max(quad[:, 0]))),
-           int(np.ceil(max(quad[:, 1]))))
-    pad = (max(-pad[0] + border, 0), max(-pad[1] + border, 0), max(pad[2] - img.size[0] + border, 0),
-           max(pad[3] - img.size[1] + border, 0))
-    if enable_padding and max(pad) > border - 4:
-        pad = np.maximum(pad, int(np.rint(qsize * 0.3)))
-        if pad_mode == 'const':
-            img = np.pad(np.float32(img), ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), 'constant', constant_values=0)
-        else:
-            img = np.pad(np.float32(img), ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), 'reflect')
-        h, w, _ = img.shape
-        y, x, _ = np.ogrid[:h, :w, :1]
-        mask = np.maximum(1.0 - np.minimum(np.float32(x) / pad[0], np.float32(w - 1 - x) / pad[2]),
-                          1.0 - np.minimum(np.float32(y) / pad[1], np.float32(h - 1 - y) / pad[3]))
-        blur = qsize * 0.02
-        img += (scipy.ndimage.gaussian_filter(img, [blur, blur, 0]) - img) * np.clip(mask * 3.0 + 1.0, 0.0, 1.0)
-        img += (np.median(img, axis=(0, 1)) - img) * np.clip(mask, 0.0, 1.0)
-        img = np.uint8(np.clip(np.rint(img), 0, 255))
-        if alpha:
-            mask = 1 - np.clip(3.0 * mask, 0.0, 1.0)
-            mask = np.uint8(np.clip(np.rint(mask * 255), 0, 255))
-            img = np.concatenate((img, mask), axis=2)
-            img = Image.fromarray(img, 'RGBA')
-        else:
-            img = Image.fromarray(img, 'RGB')
-        quad += pad[:2]
-
-    img = img.transform((transform_size, transform_size), Image.Transform.QUAD,
-                        (quad + 0.5).flatten(), Image.Resampling.BILINEAR)
-    out_image = img.resize((output_size, output_size), Image.Resampling.LANCZOS)
-
-    return np.array(out_image)
-
-
-_default_options = {'batch_size': 256}
 INP_VID = "video"
-INP_FM = 'facemesh'
+INP_FM = "facemesh"
 OUT_LF = "libreface_stream"
 OUT_LF_EMO = "libreface_emotion"
-OUT_ALIGN = 'aligned'
+OUT_ALIGN = "aligned"
+OUT_EMBEDDING = "embedding"
 
+_default_options = {
+    "batch_size": 256,
+    # Minimum facemesh landmark confidence; below -> rest class / zero outputs.
+    "min_conf": 0.5,
+}
+
+# Upstream AU sets (solver_inference_combine: au_detection_aus / au_recognition_aus)
 detection = [1, 2, 4, 6, 7, 10, 12, 14, 15, 17, 23, 24]
 regression = [1, 2, 4, 5, 6, 9, 12, 15, 17, 20, 25, 26]
+# LibreFace FER order == AffectNet-8 order (libreface/__init__.py)
 emotions = ["Neutral", "Happiness", "Sadness", "Surprise", "Fear", "Disgust", "Anger", "Contempt"]
-emo2id = {x: i for i, x in enumerate(emotions)}
-DIM_LABELS = [f'AU{str(x)}_c' for x in detection]
-DIM_LABELS.extend([f'AU{str(x)}_r' for x in regression])
-#DIM_LABELS.extend(emotions)
+DIM_LABELS = [f"AU{x}_c" for x in detection] + [f"AU{x}_r" for x in regression]
 DIM_LABELS = [{"id": i, "name": x} for i, x in enumerate(DIM_LABELS)]
-MEDIA_TYPE = 'feature;face;libreface'
-SUBDIR = 'downloads/libreface'
+MEDIA_TYPE = "feature;face;libreface"
+SUBDIR = "downloads/libreface"
+
+ALIGN_SIZE = 256      # FFHQ output_size (what the models were trained on)
+SAMPLE_SIZE = 512     # FFHQ transform_size (supersample, then antialias down)
+CROP_SIZE = 224       # AU branch: CenterCrop(224) of the 256 aligned image
+
+# MediaPipe landmark subsets used by upstream LibreFace alignment. NB the
+# first list (mediapipe "left eye" = subject's left = image RIGHT side) plays
+# the role of eye_right in the FFHQ math below, matching the original module's
+# ordering exactly.
+_EYE_IMG_RIGHT = [263, 249, 390, 373, 374, 380, 381, 382, 362,
+                  466, 388, 387, 386, 385, 384, 398]
+_EYE_IMG_LEFT = [33, 7, 163, 144, 145, 153, 154, 155, 133,
+                 246, 161, 160, 159, 158, 157, 173]
+_LIPS = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 185, 40, 39, 37,
+         0, 267, 269, 270, 409, 78, 95, 88, 178, 87, 14, 317, 402, 318, 324,
+         308, 191, 80, 81, 82, 13, 312, 311, 310, 415]
+
+_IMAGENET_MEAN = (0.485, 0.456, 0.406)
+_IMAGENET_STD = (0.229, 0.224, 0.225)
+
+
+def _ffhq_quads(landmarks: np.ndarray, img_wh: tuple) -> np.ndarray:
+    """Batched FFHQ crop quads from facemesh landmarks.
+
+    Args:
+        landmarks: [B, 468, 2] normalized (y, x) as written by the facemesh module.
+        img_wh: (width, height) in pixels.
+
+    Returns:
+        [B, 4, 2] pixel-space quads (UL, LL, LR, UR corners of the source
+        parallelogram; the same order PIL's QUAD transform expects). Rows with
+        degenerate geometry come out non-finite and must be masked by the caller.
+    """
+    W, H = img_wh
+    xy = np.stack([landmarks[..., 1] * W, landmarks[..., 0] * H], axis=-1)  # [B,468,2] (x,y)
+
+    eye_right = xy[:, _EYE_IMG_RIGHT].mean(axis=1)
+    eye_left = xy[:, _EYE_IMG_LEFT].mean(axis=1)
+    eye_avg = (eye_left + eye_right) * 0.5
+    eye_to_eye = eye_right - eye_left
+
+    lips = xy[:, _LIPS]                                   # [B,40,2]
+    left_i = np.argmin(lips[..., 0], axis=1)
+    right_i = np.argmax(lips[..., 0], axis=1)
+    rows = np.arange(len(lips))
+    mouth_avg = (lips[rows, left_i] + lips[rows, right_i]) / 2.0
+    eye_to_mouth = mouth_avg - eye_avg
+
+    # FFHQ: x = eye_to_eye - flipud(eye_to_mouth) * [-1, 1]
+    x = eye_to_eye - eye_to_mouth[:, ::-1] * np.array([-1.0, 1.0])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x = x / np.hypot(x[:, 0], x[:, 1])[:, None]
+    scale = np.maximum(np.hypot(eye_to_eye[:, 0], eye_to_eye[:, 1]) * 2.0,
+                       np.hypot(eye_to_mouth[:, 0], eye_to_mouth[:, 1]) * 1.8)
+    x = x * scale[:, None]
+    y = x[:, ::-1] * np.array([-1.0, 1.0])                # flipud(x) * [-1, 1]
+    c = eye_avg + eye_to_mouth * 0.1
+
+    return np.stack([c - x - y, c - x + y, c + x + y, c + x - y], axis=1)
 
 
 class LibreFace(Processor):
+    chainable = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.options = _default_options | self.options
-        self.batch_size = int(self.options['batch_size'])
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        log(f'Initialised LibreFace processor using device {self.device}')
+        self.batch_size = int(self.options["batch_size"])
+        self.min_conf = float(self.options["min_conf"])
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        log(f"Initialised LibreFace processor using device {self.device}")
 
-    def process_sample(self, sample):
-        images, face_landmarks = sample
-        # facemesh has 468 y,x-landmarks + confidence
-        face_landmarks, conf = face_landmarks[:, :936], face_landmarks[:, 936]
-        face_landmarks = face_landmarks.reshape((-1, 468, 2))
+        weights_dir = os.path.join(os.getenv("CACHE_DIR") or ".", SUBDIR)
 
-        # debug
-        # images = images[-1]
-        # face_landmarks = face_landmarks[-1]
+        # Build the solvers ONCE (their __init__ downloads + loads the weights).
+        # Configs replicate the upstream *_video() helpers verbatim.
+        from libreface.AU_Recognition.inference import ConfigObject
+        from libreface.AU_Recognition.solver_inference_combine import (
+            solver_inference_image_task_combine,
+        )
+        from libreface.Facial_Expression_Recognition.solver_inference_image import (
+            solver_inference_image,
+        )
 
-        Left_eye = [263, 249, 390, 373, 374, 380, 381, 382, 362, 466, 388, 387, 386, 385, 384, 398]
-        Right_eye = [33, 7, 163, 144, 145, 153, 154, 155, 133, 246, 161, 160, 159, 158, 157, 173]
-        Lips = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 185, 40, 39, 37, 0, 267, 269, 270, 409, 78, 95, 88,
-                178, 87, 14, 317, 402, 318, 324, 308, 191, 80, 81, 82, 13, 312, 311, 310, 415]
+        au_opts = ConfigObject({
+            "seed": 0,
+            "ckpt_path": f"{weights_dir}/AU_Recognition/weights/combined_repvgg.pt",
+            "weights_download_id": "1CbnBr8OBt8Wb73sL1ENcrtrWAFWSSRv0",
+            "image_inference": False,
+            "au_recognition_data_root": "", "au_recognition_data": "DISFA",
+            "au_detection_data_root": "", "au_detection_data": "BP4D",
+            "fer_train_csv": "training_filtered.csv",
+            "fer_test_csv": "validation_filtered.csv",
+            "fer_data_root": "", "fer_data": "AffectNet",
+            "fold": "all", "num_workers": 0,
+            "image_size": 256, "crop_size": CROP_SIZE,
+            "au_recognition_num_labels": 12, "au_detection_num_labels": 12,
+            "fer_num_labels": 8, "sigma": 10.0, "jitter": False,
+            "copy_classifier": False, "model_name": "resnet", "dropout": 0.1,
+            "ffhq_pretrain": "", "hidden_dim": 128, "fm_distillation": False,
+            "num_epochs": 30, "interval": 500, "threshold": 0,
+            "batch_size": self.batch_size, "learning_rate": 3e-5,
+            "weight_decay": 1e-4, "clip": 1.0, "when": 10, "patience": 5,
+            "device": self.device,
+        })
+        self.au_solver = solver_inference_image_task_combine(au_opts).to(self.device)
+        self.au_solver.eval()
 
-        
-        images_aligned = []
-        if platform.system() == 'Windows':
-            log('No multiprocessing support on Windows!')
-            for image, face_landmark in zip(images, face_landmarks):
-                lm_left_eye_x = []
-                lm_left_eye_y = []
-                lm_right_eye_x = []
-                lm_right_eye_y = []
-                lm_lips_x = []
-                lm_lips_y = []
-                for i in Left_eye:
-                    lm_left_eye_x.append(face_landmark[i][1])
-                    lm_left_eye_y.append(face_landmark[i][0])
-                for i in Right_eye:
-                    lm_right_eye_x.append(face_landmark[i][1])
-                    lm_right_eye_y.append(face_landmark[i][0])
-                for i in Lips:
-                    lm_lips_x.append(face_landmark[i][1])
-                    lm_lips_y.append(face_landmark[i][0])
-                lm_x = lm_left_eye_x + lm_right_eye_x + lm_lips_x
-                lm_y = lm_left_eye_y + lm_right_eye_y + lm_lips_y
-                landmark = np.array([lm_x, lm_y]).T
+        fer_opts = ConfigObject({
+            "seed": 0,
+            "train_csv": "training_filtered.csv", "test_csv": "validation_filtered.csv",
+            "data_root": "",
+            "ckpt_path": f"{weights_dir}/Facial_Expression_Recognition/weights/repvgg.pt",
+            "weights_download_id": "1yPBUjPhkwcIkRLt47-JJRLRD7rCwPIVU",
+            "data": "AffectNet", "num_workers": 0,
+            "image_size": 224, "num_labels": 8, "dropout": 0.1,
+            "hidden_dim": 128, "sigma": 10.0,
+            "student_model_name": "repvgg", "alpha": 1.0, "T": 1.0,
+            "fm_distillation": True, "grad": True, "interval": 500,
+            "threshold": 0.0, "loss": "unweighted", "num_epochs": 50,
+            "batch_size": self.batch_size, "learning_rate": "3e-5",
+            "weight_decay": "1e-4", "clip": 1.0, "when": 10, "patience": 10,
+            "device": self.device,
+        })
+        self.fer_solver = solver_inference_image(fer_opts).to(self.device)
+        self.fer_solver.student_model.eval()
 
-                try:
-                    image = image_align(Image.fromarray(image), landmark)
-                except ValueError:
-                    image = np.ones((256, 256, 3), dtype=np.uint8) * image.mean()
-                # debug
-                # aligned_image.save(f'{os.getenv("CACHE_DIR")}/{idx:05d}.jpg')
+        mean = torch.tensor(_IMAGENET_MEAN, device=self.device).view(1, 3, 1, 1)
+        std = torch.tensor(_IMAGENET_STD, device=self.device).view(1, 3, 1, 1)
+        self._norm = lambda t: (t - mean) / std
 
-                images_aligned.append(image)
-        else:
-            #for image, face_landmark in zip(images, face_landmarks):  # before multiprocessing
-            def f(x):
-                image, face_landmark = x
-                lm_left_eye_x = []
-                lm_left_eye_y = []
-                lm_right_eye_x = []
-                lm_right_eye_y = []
-                lm_lips_x = []
-                lm_lips_y = []
-                for i in Left_eye:
-                    lm_left_eye_x.append(face_landmark[i][1])
-                    lm_left_eye_y.append(face_landmark[i][0])
-                for i in Right_eye:
-                    lm_right_eye_x.append(face_landmark[i][1])
-                    lm_right_eye_y.append(face_landmark[i][0])
-                for i in Lips:
-                    lm_lips_x.append(face_landmark[i][1])
-                    lm_lips_y.append(face_landmark[i][0])
-                lm_x = lm_left_eye_x + lm_right_eye_x + lm_lips_x
-                lm_y = lm_left_eye_y + lm_right_eye_y + lm_lips_y
-                landmark = np.array([lm_x, lm_y]).T
+    def _align_gpu(self, frames: np.ndarray, quads: np.ndarray) -> torch.Tensor:
+        """Batched FFHQ warp: frames [B,H,W,3] uint8 + quads [B,4,2] -> [B,3,256,256] float 0..1.
 
-                try:
-                    image = image_align(Image.fromarray(image), landmark)
-                except ValueError:
-                    image = np.ones((256, 256, 3), dtype=np.uint8) * image.mean()
-                # debug
-                # aligned_image.save(f'{os.getenv("CACHE_DIR")}/{idx:05d}.jpg')
+        The FFHQ quad (c±x±y) is a parallelogram, so PIL's QUAD transform is an
+        affine map; grid_sample reproduces it. Supersample at 512, antialias down
+        to 256 (FFHQ: transform at 512, LANCZOS resize to 256).
+        """
+        B, H, W = frames.shape[:3]
+        t = torch.from_numpy(np.ascontiguousarray(frames[..., :3])).to(self.device)
+        t = t.permute(0, 3, 1, 2).float() / 255.0
 
-                #images_aligned.append(image)
-                return image
-            
-            with Pool() as p:
-                images_aligned = list(p.imap(f, zip(images, face_landmarks)))
+        q = torch.from_numpy(quads.astype(np.float32)).to(self.device)  # [B,4,2]
+        u = (torch.arange(SAMPLE_SIZE, device=self.device, dtype=torch.float32) + 0.5) / SAMPLE_SIZE
+        # src(row v, col u) = q0 + u*(q3-q0) + v*(q1-q0)
+        q0 = q[:, 0][:, None, None]
+        du = (q[:, 3] - q[:, 0])[:, None, None]
+        dv = (q[:, 1] - q[:, 0])[:, None, None]
+        src = q0 + u[None, None, :, None] * du + u[None, :, None, None] * dv  # [B,S,S,2] (x,y)
+        grid = torch.empty_like(src)
+        grid[..., 0] = 2.0 * src[..., 0] / W - 1.0
+        grid[..., 1] = 2.0 * src[..., 1] / H - 1.0
 
-        au_c_r = get_au_intensities_and_detect_aus_video(images_aligned, batch_size=self.batch_size, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
-        fer = get_facial_expression_video(images_aligned, batch_size=self.batch_size, device=self.device, weights_download_dir=os.getenv("CACHE_DIR") + '/' + SUBDIR)
+        warped = F.grid_sample(t, grid, mode="bilinear", padding_mode="border",
+                               align_corners=False)
+        return F.interpolate(warped, size=(ALIGN_SIZE, ALIGN_SIZE), mode="bicubic",
+                             antialias=True).clamp(0, 1)
 
-        fer = fer.replace(emo2id).infer_objects(copy=False)
-        return pd.concat([au_c_r[0], au_c_r[1], fer], axis=1).values, np.array(images_aligned, dtype=np.uint8)
+    def process_sample(self, images: np.ndarray, face_landmarks: np.ndarray):
+        """One batch: frames [B,H,W,3] uint8 + facemesh rows [B,937] -> per-frame outputs."""
+        B = len(images)
+        H, W = images.shape[1:3]
+        conf = face_landmarks[:, 936]
+        lms = face_landmarks[:, :936].reshape((-1, 468, 2))
 
-    def process_data(self, ds_iterator) -> dict[str, np.ndarray]:
-        """Returning a dictionary that contains the original keys from the dataset iterator and a list of processed
-        samples as value. Can be overwritten to customize the processing"""
+        quads = _ffhq_quads(lms, (W, H))
+        valid = (conf >= self.min_conf) & np.isfinite(quads).all(axis=(1, 2))
 
-        self.session_manager = self.get_session_manager(ds_iterator)
+        aus = np.zeros((B, 24), dtype=np.float32)
+        probs = np.zeros((B, 9), dtype=np.float32)
+        probs[:, 8] = 1.0                        # default: rest class (no face)
+        aligned = np.zeros((B, ALIGN_SIZE, ALIGN_SIZE, 3), dtype=np.uint8)
+        embedding = None
+
+        idx = np.where(valid)[0]
+        if len(idx):
+            with torch.no_grad():
+                al = self._align_gpu(images[idx], quads[idx])   # [n,3,256,256] 0..1
+
+                # AU branch: CenterCrop(224) of the 256 aligned image + ImageNet norm
+                off = (ALIGN_SIZE - CROP_SIZE) // 2
+                au_in = self._norm(al[:, :, off:off + CROP_SIZE, off:off + CROP_SIZE])
+                au_det = (self.au_solver.model(au_in, task_name="au_detection") >= 0.5).int()
+                au_int = self.au_solver.model(au_in, task_name="au_recognition") * 5.0
+
+                # FER branch: straight resize 256 -> 224 + ImageNet norm
+                fer_in = self._norm(F.interpolate(al, size=(224, 224), mode="bicubic",
+                                                  antialias=True).clamp(0, 1))
+                logits, feat = self.fer_solver.student_model(fer_in)
+                fer_probs = torch.softmax(logits, dim=-1)
+
+            aus[idx, :12] = au_det.cpu().numpy()
+            aus[idx, 12:] = au_int.cpu().numpy()
+            probs[idx, 8] = 0.0
+            probs[idx, :8] = fer_probs.cpu().numpy()
+            aligned[idx] = (al.permute(0, 2, 3, 1) * 255).round().byte().cpu().numpy()
+            embedding = np.zeros((B, feat.shape[-1]), dtype=np.float32)
+            embedding[idx] = feat.cpu().numpy()
+
+        return aus, probs, aligned, embedding
+
+    def process_data(self, ds_manager) -> dict:
+        self.session_manager = self.get_session_manager(ds_manager)
         data_object = self.session_manager.input_data[INP_VID]
         data = data_object.data
-        fm_obj = self.session_manager.input_data[INP_FM]
-        fm_data = fm_obj.data
+        fm_data = self.session_manager.input_data[INP_FM].data
 
-        predictions, alignments = [], []
-        tot_batch = int(len(data) / self.batch_size)
-        for i in range(0, len(data), self.batch_size):
-            idx_start = i
-            idx_end = (
-                idx_start + self.batch_size
-                if idx_start + self.batch_size <= len(data)
-                else len(data)
-            )
-            idxs = list(range(idx_start, idx_end))
-            log(f"Batch {i / self.batch_size:.0f} of {tot_batch} : {idx_start} - {idx_end}")
+        # Append batch dimension
+        if isinstance(data_object, Image):
+            data = np.expand_dims(data, 0)
+
+        from time import perf_counter
+        aus, probs, aligned, embeddings = [], [], [], []
+        emb_dim = None
+        iter_len = min(len(data), len(fm_data))
+        tot_batch = -(-iter_len // self.batch_size)
+        for i in range(0, iter_len, self.batch_size):
+            idxs = list(range(i, min(i + self.batch_size, iter_len)))
             if not idxs:
                 continue
-
-            frame = data[idxs], fm_data[idxs]
             s = perf_counter()
-            preds, aligns = self.process_sample(frame)
-            predictions.extend(preds)
-            alignments.extend(aligns)
+            a, p, al, emb = self.process_sample(np.asarray(data[idxs]), fm_data[idxs])
+            aus.append(a)
+            probs.append(p)
+            aligned.append(al)
+            if emb is not None:
+                emb_dim = emb.shape[-1]
+            embeddings.append(emb)
             e = perf_counter()
-            log(f'{e - s:.3f}s/batch, {(e - s) / self.batch_size:.3f}s/image,'
-                  f' eta {(tot_batch - i / self.batch_size) * (e - s):.3f}s')
-            # debug
-            # break
+            log(f"Batch {i // self.batch_size + 1} of {tot_batch}: {e - s:.3f}s/batch,"
+                f" {(e - s) / len(idxs) * 1000:.1f}ms/frame")
+
+        # batches without any valid face returned emb=None; backfill zeros
+        if emb_dim is None:
+            emb_dim = 1
+        embeddings = [
+            e if e is not None else np.zeros((len(a), emb_dim), np.float32)
+            for e, a in zip(embeddings, aus)
+        ]
 
         torch.cuda.empty_cache()
-        return {'predictions': np.array(predictions), 'alignments': np.array(alignments)}
+        return {
+            "aus": np.concatenate(aus) if aus else np.zeros((0, 24), np.float32),
+            "probs": np.concatenate(probs) if probs else np.zeros((0, 9), np.float32),
+            "aligned": np.concatenate(aligned) if aligned else
+            np.zeros((0, ALIGN_SIZE, ALIGN_SIZE, 3), np.uint8),
+            "embedding": np.concatenate(embeddings) if embeddings else
+            np.zeros((0, emb_dim), np.float32),
+        }
 
-    def to_output(self, data: np.ndarray) -> dict:
+    def to_output(self, data: dict) -> dict:
         output_templates = self.session_manager.output_data_templates
-        frame = int(1000 / self.session_manager.input_data[INP_VID].meta_data.sample_rate)
-        l = len(d := data['predictions'][:, -1])
-        emo_data = np.array([[i*frame for i in range(l)], [i*frame for i in range(1,l+1)], d, [1]*l]).T  # from, to, id, conf
-        output_templates[OUT_LF_EMO].data = [tuple(x) for x in emo_data]  # to enforce expected data type
+        sr_hz = self.session_manager.input_data[INP_VID].meta_data.sample_rate
+        frame_ms = 1000 / sr_hz
+
+        probs = data["probs"]
+        n = len(probs)
+        emo_data = np.array([
+            [i * frame_ms for i in range(n)],
+            [i * frame_ms for i in range(1, n + 1)],
+            np.argmax(probs, axis=-1),
+            np.amax(probs, axis=-1),
+        ]).T
+        anno = output_templates[OUT_LF_EMO]
+        if isinstance(anno.annotation_scheme, DiscreteAnnotationScheme):
+            emo_data = np.asarray(
+                [tuple(x) for x in emo_data], dtype=anno.annotation_scheme.label_dtype
+            )
+        anno.data = emo_data
+
         output_templates[OUT_LF] = SSIStream(
-            data=data['predictions'][:, :-1].astype(np.dtype('<f4')),  # no dynamic conversion from fp64 to fp32 possible
-            sample_rate=self.session_manager.input_data[INP_VID].meta_data.sample_rate,
+            data=data["aus"].astype(np.dtype("<f4")),
+            sample_rate=sr_hz,
             dim_labels=DIM_LABELS,
             media_type=MEDIA_TYPE,
             role=output_templates[OUT_LF].meta_data.role,
@@ -297,13 +347,17 @@ class LibreFace(Processor):
             session=output_templates[OUT_LF].meta_data.session,
         )
         output_templates[OUT_ALIGN] = Video(
-            data=data['alignments'],
-            sample_rate=self.session_manager.input_data[INP_VID].meta_data.sample_rate,
-            dim_labels=DIM_LABELS,
+            data=data["aligned"],
+            sample_rate=sr_hz,
             media_type=MEDIA_TYPE,
             role=output_templates[OUT_ALIGN].meta_data.role,
             dataset=output_templates[OUT_ALIGN].meta_data.dataset,
             name=output_templates[OUT_ALIGN].meta_data.name,
             session=output_templates[OUT_ALIGN].meta_data.session,
+        )
+        output_templates[OUT_EMBEDDING] = SSIStream(
+            data=np.array(data["embedding"], SSINPDataType.FLOAT.value),
+            sample_rate=sr_hz,
+            media_type=MEDIA_TYPE,
         )
         return output_templates
