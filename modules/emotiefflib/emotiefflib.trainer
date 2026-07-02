@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta backend="nova-server" category="Emotion" description="Calculates categorical emotions (AffectNet-8), valence / arousal and face embeddings for facial expressions (EmotiEffLib / ex-HSEmotion)." is_iterable="False">
+    <io type="input" id="video" data="stream:Video" default_value="video" />
+    <io type="input" id="face_bb" data="stream:SSIStream:blazeface" default_value="face_bounding_box" />
+
+    <io type="output" id="expression" data="annotation:Discrete" default_value="emotion" />
+    <io type="output" id="valence" data="annotation:Continuous" default_value="valence" />
+    <io type="output" id="arousal" data="annotation:Continuous" default_value="arousal" />
+    <io type="output" id="embedding" data="stream:SSIStream" default_value="emotiefflib" />
+</meta>
+<model create="EmotiEffLib" script="emotiefflib_script.py" optstr="{model_name:STRING:enet_b0_8_va_mtl};{batch_size:STRING:64};{face_detection_min_conf:STRING:0.5};{margin:STRING:0.1}"/>
+</trainer>

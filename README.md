@@ -48,6 +48,7 @@ The integration code in this repository is licensed under the [GNU General Publi
 | crisperwhisper | CC BY-NC 4.0 | No |
 | diarisation | MIT / Apache 2.0 (gated models) | Yes |
 | emonet | CC BY-NC-ND 4.0 | No |
+| emotiefflib | Apache 2.0 | Yes (weights trained on research-only AffectNet, check use case) |
 | emow2v | CC BY-NC-SA 4.0 | No (requires audEERING license) |
 | facemesh | Apache 2.0 | Yes |
 | gaze_clustering | MIT | Yes |
