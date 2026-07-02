@@ -42,6 +42,9 @@ _default_options = {
     "temporal_smoothing": False
 }
 
+# Upstream class order (README "Class number to expression name"). The 5-class
+# model (num_expressions=5) uses exactly the first five entries, so this map is
+# valid for both variants; the rest class is n_classes (5 or 8), not always 8.
 _label_map = {
     "0": "Neutral",
     "1": "Happy",
@@ -76,7 +79,9 @@ class EmoNet(Processor):
 
         # Build model
         self._device = (
-            "cuda" if torch.cuda.is_available() else ("mps" if torch.has_mps else "cpu")
+            "cuda"
+            if torch.cuda.is_available()
+            else ("mps" if torch.backends.mps.is_available() else "cpu")
         )
         log(f"Using device {self._device}")
 
@@ -97,11 +102,11 @@ class EmoNet(Processor):
 
         log(f"Loading the model from {weight_file}.")
         _net = _EmoNet(n_expression=self.n_classes, temporal_smoothing=self.options["temporal_smoothing"], device=self._device).to(self._device)
-        state_dict = torch.load(str(weight_file), map_location=self._device)
+        state_dict = torch.load(str(weight_file), map_location=self._device,
+                                weights_only=True)
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         _net.load_state_dict(state_dict, strict=False)
         _net.eval()
-        torch.no_grad()
         self.model = _net
         self._conf_thresh = 0.5
         self.img_width = 256
@@ -209,11 +214,11 @@ class EmoNet(Processor):
                 data_ = None
             anno.data = data_
 
-            # embeddings
-            self.session_manager.output_data_templates[OUTPUT_ID_EMBEDDING] = SSIStream(
-                data=np.array(data["embedding"], SSINPDataType.FLOAT.value),
-                sample_rate=sr_hz
-            )
+        # embeddings
+        self.session_manager.output_data_templates[OUTPUT_ID_EMBEDDING] = SSIStream(
+            data=np.array(data["embedding"], SSINPDataType.FLOAT.value),
+            sample_rate=sr_hz
+        )
 
         return self.session_manager.output_data_templates
 
@@ -230,7 +235,7 @@ if __name__ == "__main__":
 
         valence = detections['valence'][0]
         arousal = detections['arousal'][0]
-        class_id = str(np.argmax(detections['expression']))
+        class_id = str(np.argmax(detections['expression'][0]))
         expression = _label_map.get(class_id, 'rest_class')
         fp = img.meta_data.file_path
         fig.suptitle(f'V: {valence} | A: {arousal} | EX: {expression}')
