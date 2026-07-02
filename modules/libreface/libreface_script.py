@@ -209,8 +209,12 @@ class LibreFace(Processor):
 
         The FFHQ quad (c±x±y) is a parallelogram, so PIL's QUAD transform is an
         affine map; grid_sample reproduces it. Supersample at 512, antialias down
-        to 256 (FFHQ: transform at 512, LANCZOS resize to 256). Chunked so peak
-        memory is bounded by ALIGN_CHUNK full-resolution frames.
+        to 256 (FFHQ: transform at 512, LANCZOS resize to 256).
+
+        Only the quad's bounding region of each frame is uploaded (edge-padded
+        to a common chunk size), so GPU memory scales with FACE size, not video
+        resolution. Out-of-frame quad parts hit replicated edge pixels, same as
+        the previous full-frame border sampling.
         """
         if len(frames) > ALIGN_CHUNK:
             return torch.cat([
@@ -218,10 +222,25 @@ class LibreFace(Processor):
                 for i in range(0, len(frames), ALIGN_CHUNK)
             ])
         B, H, W = frames.shape[:3]
-        t = torch.from_numpy(np.ascontiguousarray(frames[..., :3])).to(self.device)
+        # crop each frame to its quad's bbox (+1 px bilinear border), shift quads
+        x0 = np.clip(np.floor(quads[..., 0].min(1)) - 1, 0, W - 2).astype(int)
+        y0 = np.clip(np.floor(quads[..., 1].min(1)) - 1, 0, H - 2).astype(int)
+        x1 = np.clip(np.ceil(quads[..., 0].max(1)) + 1, x0 + 2, W).astype(int)
+        y1 = np.clip(np.ceil(quads[..., 1].max(1)) + 1, y0 + 2, H).astype(int)
+        ch, cw = int((y1 - y0).max()), int((x1 - x0).max())
+        crops = np.empty((B, ch, cw, 3), dtype=np.uint8)
+        for i in range(B):
+            c = frames[i, y0[i]:y1[i], x0[i]:x1[i], :3]
+            # edge-pad to the common chunk size (replicates frame border for
+            # quads that extend past the image, like border sampling did)
+            crops[i] = np.pad(c, ((0, ch - c.shape[0]), (0, cw - c.shape[1]), (0, 0)),
+                              mode="edge")
+        q_shift = quads.astype(np.float32) - np.stack([x0, y0], -1)[:, None, :].astype(np.float32)
+
+        t = torch.from_numpy(crops).to(self.device)
         t = t.permute(0, 3, 1, 2).float() / 255.0
 
-        q = torch.from_numpy(quads.astype(np.float32)).to(self.device)  # [B,4,2]
+        q = torch.from_numpy(q_shift).to(self.device)  # [B,4,2]
         u = (torch.arange(SAMPLE_SIZE, device=self.device, dtype=torch.float32) + 0.5) / SAMPLE_SIZE
         # src(row v, col u) = q0 + u*(q3-q0) + v*(q1-q0)
         q0 = q[:, 0][:, None, None]
@@ -229,8 +248,8 @@ class LibreFace(Processor):
         dv = (q[:, 1] - q[:, 0])[:, None, None]
         src = q0 + u[None, None, :, None] * du + u[None, :, None, None] * dv  # [B,S,S,2] (x,y)
         grid = torch.empty_like(src)
-        grid[..., 0] = 2.0 * src[..., 0] / W - 1.0
-        grid[..., 1] = 2.0 * src[..., 1] / H - 1.0
+        grid[..., 0] = 2.0 * src[..., 0] / cw - 1.0
+        grid[..., 1] = 2.0 * src[..., 1] / ch - 1.0
 
         warped = F.grid_sample(t, grid, mode="bilinear", padding_mode="border",
                                align_corners=False)
