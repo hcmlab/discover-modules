@@ -46,6 +46,12 @@ _default_options = {
     "repeat_last": True,
 }
 
+# Full-resolution frames are uploaded and resized on the GPU in sub-chunks of
+# this size, so peak GPU memory is bounded by the chunk instead of
+# batch_size x video resolution (the antialias resize works in float32:
+# 250 x 1080p was ~3 GiB before the detector even ran).
+UPLOAD_CHUNK = 32
+
 _dl_bb = ["ymin", "xmin", "ymax", "xmax"]
 
 _dl_lm = [
@@ -239,9 +245,16 @@ class BlazeFace(Processor):
                 continue
 
             frame = np.asarray(data[idxs])
-            frame_t = torch.from_numpy(frame).to(self._device)
-            frame_t = frame_t.permute((0, 3, 1, 2))
-            frame_t = self.transform(frame_t)
+            # upload + resize in sub-chunks; the resized frames (128/256 px)
+            # are small, so the detector still sees the whole batch at once
+            frame_t = torch.cat([
+                self.transform(
+                    torch.from_numpy(frame[j:j + UPLOAD_CHUNK])
+                    .to(self._device)
+                    .permute((0, 3, 1, 2))
+                )
+                for j in range(0, len(frame), UPLOAD_CHUNK)
+            ])
             detections = self.model.predict_on_batch(frame_t)
             predictions.extend(detections)
 
