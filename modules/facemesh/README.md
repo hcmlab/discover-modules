@@ -25,7 +25,14 @@ The input of the model is a video and feature stream containing the bounding box
 
   Each face mesh stream consisting of 937 dimensional vector per sample:
   - The first 936 values are the coordinates in alternating y,x order
-  - `confidence value`
+  - `confidence value`: sigmoid face-presence probability in [0, 1]
+    (MediaPipe's faceflag; MediaPipe considers a face present at >= 0.5)
+
+  **Scale change in v2.0.0:** streams written by versions < 2.0.0 stored
+  `clip(raw_logit / 100, 0, 1)` instead (real faces ~0.05-0.35, no face = 0).
+  Old streams stay valid for their landmarks, but their confidence column is
+  on the old scale; downstream consumers gating on confidence (e.g. the
+  libreface module's `min_conf`) assume the new probability scale.
 
 ## Examples
 

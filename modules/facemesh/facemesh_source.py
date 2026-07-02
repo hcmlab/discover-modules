@@ -118,36 +118,36 @@ class GetKeysDict:
 
     def __init__(self):
         self.facial_landmark_dict = {
-            "confidence.2.depthwiseconv_conv.0.weight": "depthwise_conv2d_16/Kernel",
-            "confidence.2.depthwiseconv_conv.0.bias": "depthwise_conv2d_16/Bias",
-            "confidence.2.depthwiseconv_conv.1.weight": "conv2d_17/Kernel",
-            "confidence.2.depthwiseconv_conv.1.bias": "conv2d_17/Bias",
-            "confidence.2.prelu.weight": "p_re_lu_17/Alpha",
-            "confidence.3.weight": "conv2d_18/Kernel",
-            "confidence.3.bias": "conv2d_18/Bias",
-            "confidence.4.weight": "p_re_lu_18/Alpha",
-            "confidence.5.depthwiseconv_conv.0.weight": "depthwise_conv2d_17/Kernel",
-            "confidence.5.depthwiseconv_conv.0.bias": "depthwise_conv2d_17/Bias",
-            "confidence.5.depthwiseconv_conv.1.weight": "conv2d_19/Kernel",
-            "confidence.5.depthwiseconv_conv.1.bias": "conv2d_19/Bias",
-            "confidence.5.prelu.weight": "p_re_lu_19/Alpha",
-            "confidence.6.weight": "conv2d_20/Kernel",
-            "confidence.6.bias": "conv2d_20/Bias",
-            "facial_landmarks.0.depthwiseconv_conv.0.weight": "depthwise_conv2d_22/Kernel",
-            "facial_landmarks.0.depthwiseconv_conv.0.bias": "depthwise_conv2d_22/Bias",
-            "facial_landmarks.0.depthwiseconv_conv.1.weight": "conv2d_27/Kernel",
-            "facial_landmarks.0.depthwiseconv_conv.1.bias": "conv2d_27/Bias",
-            "facial_landmarks.0.prelu.weight": "p_re_lu_25/Alpha",
-            "facial_landmarks.1.weight": "conv2d_28/Kernel",
-            "facial_landmarks.1.bias": "conv2d_28/Bias",
-            "facial_landmarks.2.weight": "p_re_lu_26/Alpha",
-            "facial_landmarks.3.depthwiseconv_conv.0.weight": "depthwise_conv2d_23/Kernel",
-            "facial_landmarks.3.depthwiseconv_conv.0.bias": "depthwise_conv2d_23/Bias",
-            "facial_landmarks.3.depthwiseconv_conv.1.weight": "conv2d_29/Kernel",
-            "facial_landmarks.3.depthwiseconv_conv.1.bias": "conv2d_29/Bias",
-            "facial_landmarks.3.prelu.weight": "p_re_lu_27/Alpha",
-            "facial_landmarks.4.weight": "conv2d_30/Kernel",
-            "facial_landmarks.4.bias": "conv2d_30/Bias",
+            "facial_landmarks.2.depthwiseconv_conv.0.weight": "depthwise_conv2d_16/Kernel",
+            "facial_landmarks.2.depthwiseconv_conv.0.bias": "depthwise_conv2d_16/Bias",
+            "facial_landmarks.2.depthwiseconv_conv.1.weight": "conv2d_17/Kernel",
+            "facial_landmarks.2.depthwiseconv_conv.1.bias": "conv2d_17/Bias",
+            "facial_landmarks.2.prelu.weight": "p_re_lu_17/Alpha",
+            "facial_landmarks.3.weight": "conv2d_18/Kernel",
+            "facial_landmarks.3.bias": "conv2d_18/Bias",
+            "facial_landmarks.4.weight": "p_re_lu_18/Alpha",
+            "facial_landmarks.5.depthwiseconv_conv.0.weight": "depthwise_conv2d_17/Kernel",
+            "facial_landmarks.5.depthwiseconv_conv.0.bias": "depthwise_conv2d_17/Bias",
+            "facial_landmarks.5.depthwiseconv_conv.1.weight": "conv2d_19/Kernel",
+            "facial_landmarks.5.depthwiseconv_conv.1.bias": "conv2d_19/Bias",
+            "facial_landmarks.5.prelu.weight": "p_re_lu_19/Alpha",
+            "facial_landmarks.6.weight": "conv2d_20/Kernel",
+            "facial_landmarks.6.bias": "conv2d_20/Bias",
+            "confidence.0.depthwiseconv_conv.0.weight": "depthwise_conv2d_22/Kernel",
+            "confidence.0.depthwiseconv_conv.0.bias": "depthwise_conv2d_22/Bias",
+            "confidence.0.depthwiseconv_conv.1.weight": "conv2d_27/Kernel",
+            "confidence.0.depthwiseconv_conv.1.bias": "conv2d_27/Bias",
+            "confidence.0.prelu.weight": "p_re_lu_25/Alpha",
+            "confidence.1.weight": "conv2d_28/Kernel",
+            "confidence.1.bias": "conv2d_28/Bias",
+            "confidence.2.weight": "p_re_lu_26/Alpha",
+            "confidence.3.depthwiseconv_conv.0.weight": "depthwise_conv2d_23/Kernel",
+            "confidence.3.depthwiseconv_conv.0.bias": "depthwise_conv2d_23/Bias",
+            "confidence.3.depthwiseconv_conv.1.weight": "conv2d_29/Kernel",
+            "confidence.3.depthwiseconv_conv.1.bias": "conv2d_29/Bias",
+            "confidence.3.prelu.weight": "p_re_lu_27/Alpha",
+            "confidence.4.weight": "conv2d_30/Kernel",
+            "confidence.4.bias": "conv2d_30/Bias",
         }
 
 
@@ -194,9 +194,9 @@ class _FaceMesh(nn.Module):
             FacialLMBasicBlock(128, 128),
         )
 
-        # facial_landmark head
-        # @TODO change name from self.confidence to self.facial_landmarks
-        self.confidence = nn.Sequential(
+        # facial_landmark head (named `confidence` in the original port and in
+        # the published checkpoint; keys are remapped at load time)
+        self.facial_landmarks = nn.Sequential(
             FacialLMBasicBlock(128, 128, stride=2),
             FacialLMBasicBlock(128, 128),
             FacialLMBasicBlock(128, 128),
@@ -221,9 +221,9 @@ class _FaceMesh(nn.Module):
             ),
         )
 
-        # confidence score head
-        # @TODO change name from self.facial_landmarks to  self.confidence
-        self.facial_landmarks = nn.Sequential(
+        # confidence (faceflag) head (named `facial_landmarks` in the original
+        # port and in the published checkpoint; keys are remapped at load time)
+        self.confidence = nn.Sequential(
             FacialLMBasicBlock(128, 128, stride=2),
             nn.Conv2d(
                 in_channels=128,
@@ -262,15 +262,15 @@ class _FaceMesh(nn.Module):
             368 face landmarks
         """
 
-        # @TODO remove
         with torch.no_grad():
             x = nn.ReflectionPad2d((1, 0, 1, 0))(x)
             features = self.backbone(x)
 
-            # @TODO change the names
-            confidence = self.facial_landmarks(features)
+            facial_landmarks = self.facial_landmarks(features)
 
-            facial_landmarks = self.confidence(features)
+            # raw faceflag logit -> face-presence probability, as in upstream
+            # MediaPipe (which thresholds this at 0.5)
+            confidence = torch.sigmoid(self.confidence(features))
 
             return [facial_landmarks, confidence]
         # return [facial_landmarks.view(x.shape[0], -1), confidence.reshape(x.shape[0], -1)]

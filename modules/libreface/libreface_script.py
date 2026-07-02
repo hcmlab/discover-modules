@@ -53,11 +53,12 @@ OUT_EMBEDDING = "embedding"
 
 _default_options = {
     "batch_size": 256,
-    # Minimum facemesh landmark confidence; below -> rest class / zero outputs.
-    # NB the facemesh stream's confidence is the raw landmark-model score
-    # divided by 100 (NOT a probability): ~0.05-0.35 on real faces, exactly 0
-    # when no face was found. The default only skips true no-face rows.
-    "min_conf": 0.001,
+    # Minimum facemesh face-presence probability; below -> rest class / zero
+    # outputs. Assumes facemesh >= 2.0.0 (sigmoid probability; 0.5 is
+    # MediaPipe's own presence threshold). Streams written by facemesh < 2.0.0
+    # carry clip(raw_logit/100, 0, 1) instead -- set min_conf to ~0.001 for
+    # those (real faces score only ~0.05-0.35 on that scale).
+    "min_conf": 0.5,
 }
 
 # Upstream AU sets (solver_inference_combine: au_detection_aus / au_recognition_aus)
@@ -73,6 +74,9 @@ SUBDIR = "downloads/libreface"
 ALIGN_SIZE = 256      # FFHQ output_size (what the models were trained on)
 SAMPLE_SIZE = 512     # FFHQ transform_size (supersample, then antialias down)
 CROP_SIZE = 224       # AU branch: CenterCrop(224) of the 256 aligned image
+# The warp uploads full-resolution frames; chunk it so peak GPU memory stays
+# bounded by the chunk (not batch_size) regardless of video resolution.
+ALIGN_CHUNK = 32
 
 # MediaPipe landmark subsets used by upstream LibreFace alignment. NB the
 # first list (mediapipe "left eye" = subject's left = image RIGHT side) plays
@@ -205,8 +209,14 @@ class LibreFace(Processor):
 
         The FFHQ quad (c±x±y) is a parallelogram, so PIL's QUAD transform is an
         affine map; grid_sample reproduces it. Supersample at 512, antialias down
-        to 256 (FFHQ: transform at 512, LANCZOS resize to 256).
+        to 256 (FFHQ: transform at 512, LANCZOS resize to 256). Chunked so peak
+        memory is bounded by ALIGN_CHUNK full-resolution frames.
         """
+        if len(frames) > ALIGN_CHUNK:
+            return torch.cat([
+                self._align_gpu(frames[i:i + ALIGN_CHUNK], quads[i:i + ALIGN_CHUNK])
+                for i in range(0, len(frames), ALIGN_CHUNK)
+            ])
         B, H, W = frames.shape[:3]
         t = torch.from_numpy(np.ascontiguousarray(frames[..., :3])).to(self.device)
         t = t.permute(0, 3, 1, 2).float() / 255.0

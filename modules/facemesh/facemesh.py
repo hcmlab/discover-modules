@@ -68,7 +68,19 @@ class FaceMesh(Processor):
             cache_dir=os.getenv("CACHE_DIR"),
             tmp_dir=os.getenv("TMP_DIR"),
         )
-        weights = torch.load(weights_uri)
+        weights = torch.load(weights_uri, weights_only=True)
+        # The published checkpoint carries the original port's SWAPPED head
+        # names (its `confidence.*` tensors are the landmark head and vice
+        # versa). _FaceMesh now names the heads correctly, so remap here.
+        _swap = {"confidence.": "facial_landmarks.", "facial_landmarks.": "confidence."}
+
+        def _remap(k):
+            for old, new in _swap.items():
+                if k.startswith(old):
+                    return new + k[len(old):]
+            return k
+
+        weights = {_remap(k): v for k, v in weights.items()}
 
         self._device = (
             "cuda"
@@ -202,10 +214,9 @@ class FaceMesh(Processor):
 
         # TODO diff between image and video
         # Combine bounding box, landmarks, confidence
+        # sigmoid face-presence probability straight from the model (the old
+        # clip(logit/100, 0, 1) scaling is gone as of v2.0.0)
         confidence = np.expand_dims(np.squeeze(np.stack(confidence)), -1)
-
-        # Remove negative values and scale between 0 and 1
-        confidence = np.clip(confidence / 100,0,1)
         return np.hstack([predictions, confidence])
 
     def to_output(self, data: np.ndarray) -> dict:

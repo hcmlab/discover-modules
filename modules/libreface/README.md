@@ -26,11 +26,11 @@ Outputs:
 ## Options
 
 - `batch_size` (default 256)
-- `min_conf` (default 0.001): minimum facemesh confidence; below, the frame
-  gets the rest class and zeroed streams. NB the facemesh stream's
-  confidence is the raw landmark-model score / 100, NOT a probability:
-  real faces typically score 0.05-0.35 and no-face rows are exactly 0, so
-  the default only skips true no-face frames.
+- `min_conf` (default 0.5): minimum facemesh face-presence probability;
+  below, the frame gets the rest class and zeroed streams. Assumes a
+  facemesh >= 2.0.0 stream (sigmoid probability; 0.5 = MediaPipe's own
+  presence threshold). For streams written by facemesh < 2.0.0 (scale
+  clip(raw_logit/100, 0, 1), real faces ~0.05-0.35) set min_conf ~0.001.
 
 ## Implementation notes (v2 rewrite)
 
