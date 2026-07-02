@@ -26,8 +26,11 @@ Outputs:
 ## Options
 
 - `batch_size` (default 256)
-- `min_conf` (default 0.5): minimum facemesh confidence; below, the frame
-  gets the rest class and zeroed streams
+- `min_conf` (default 0.001): minimum facemesh confidence; below, the frame
+  gets the rest class and zeroed streams. NB the facemesh stream's
+  confidence is the raw landmark-model score / 100, NOT a probability:
+  real faces typically score 0.05-0.35 and no-face rows are exactly 0, so
+  the default only skips true no-face frames.
 
 ## Implementation notes (v2 rewrite)
 

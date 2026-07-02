@@ -39,6 +39,12 @@ Outputs:
   returned tight partial boxes on high-resolution multi-face frames that
   collapsed emotion accuracy; the blazeface bbox + margin crop is consistent
   with the other affect modules and was validated there.
+- The expression head is fragile on small faces: on a real webcam session
+  (~100 px face) it over-predicted Fear (65% of frames, rising with larger
+  margins) where emonet/emotiefflib/libreface agreed on Neutral/Happy.
+  Verified not to be a porting bug (bit-identical to the audit wrapper).
+  Treat the AUs, gaze and embeddings as this module's primary outputs and
+  prefer emotiefflib for expression unless faces are large and well-lit.
 - Weights (MTL_backbone.pth) come from the huggingface mirror
   nutPace/openface_weights via the nova-server cache (hash-pinned).
 

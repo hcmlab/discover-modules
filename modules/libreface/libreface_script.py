@@ -54,7 +54,10 @@ OUT_EMBEDDING = "embedding"
 _default_options = {
     "batch_size": 256,
     # Minimum facemesh landmark confidence; below -> rest class / zero outputs.
-    "min_conf": 0.5,
+    # NB the facemesh stream's confidence is the raw landmark-model score
+    # divided by 100 (NOT a probability): ~0.05-0.35 on real faces, exactly 0
+    # when no face was found. The default only skips true no-face rows.
+    "min_conf": 0.001,
 }
 
 # Upstream AU sets (solver_inference_combine: au_detection_aus / au_recognition_aus)
