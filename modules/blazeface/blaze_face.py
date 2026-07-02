@@ -44,6 +44,10 @@ _default_options = {
     "batch_size": 250,
     "force_square_ar": True,
     "repeat_last": True,
+    # Aspect-preserving resize + symmetric padding, like MediaPipe's
+    # ImageTransformationCalculator (FIT) + DetectionLetterboxRemoval.
+    # False restores the old squash-resize (streams recorded before v1.1.0).
+    "letterbox": True,
 }
 
 # Full-resolution frames are uploaded and resized on the GPU in sub-chunks of
@@ -138,6 +142,8 @@ class BlazeFace(Processor):
         self.model.load_weights(weights)
         self.model.load_anchors(anchors)
 
+        self.input_size = input_size[0]
+        self.letterbox = string_to_bool(str(self.options["letterbox"]))
         self.transform = v2.Compose(
             [
                 v2.Resize(size=input_size, antialias=True),
@@ -155,6 +161,19 @@ class BlazeFace(Processor):
 
         # TODO allow detection of more than one face
         self.num_faces = 1
+
+    def _remove_letterbox(self, d, pad_t, pad_l, new_h, new_w):
+        """Map detections from padded-square coords back to original-frame
+        normalized coords (MediaPipe's DetectionLetterboxRemoval)."""
+        if len(d) == 0:
+            return d
+        S = self.input_size
+        y_cols = [0, 2, 5, 7, 9, 11, 13, 15]   # ymin, ymax + keypoint y
+        x_cols = [1, 3, 4, 6, 8, 10, 12, 14]   # xmin, xmax + keypoint x
+        d = d.clone()
+        d[:, y_cols] = (d[:, y_cols] * S - pad_t) / new_h
+        d[:, x_cols] = (d[:, x_cols] * S - pad_l) / new_w
+        return d
 
     def _post_process_sample(self, x):
         # Move to cpu
@@ -245,10 +264,26 @@ class BlazeFace(Processor):
                 continue
 
             frame = np.asarray(data[idxs])
+            if self.letterbox:
+                # MediaPipe-style FIT: aspect-preserving resize + symmetric
+                # zero padding to the square model input
+                H, W = frame.shape[1:3]
+                S = self.input_size
+                scale = S / max(H, W)
+                new_h = min(S, max(1, round(H * scale)))
+                new_w = min(S, max(1, round(W * scale)))
+                pad_t, pad_l = (S - new_h) // 2, (S - new_w) // 2
+                tf = v2.Compose([
+                    v2.Resize(size=(new_h, new_w), antialias=True),
+                    v2.Pad(padding=[pad_l, pad_t, S - new_w - pad_l, S - new_h - pad_t],
+                           fill=0),
+                ])
+            else:
+                tf = self.transform
             # upload + resize in sub-chunks; the resized frames (128/256 px)
             # are small, so the detector still sees the whole batch at once
             frame_t = torch.cat([
-                self.transform(
+                tf(
                     torch.from_numpy(frame[j:j + UPLOAD_CHUNK])
                     .to(self._device)
                     .permute((0, 3, 1, 2))
@@ -256,6 +291,11 @@ class BlazeFace(Processor):
                 for j in range(0, len(frame), UPLOAD_CHUNK)
             ])
             detections = self.model.predict_on_batch(frame_t)
+            if self.letterbox:
+                detections = [
+                    self._remove_letterbox(d, pad_t, pad_l, new_h, new_w)
+                    for d in detections
+                ]
             predictions.extend(detections)
 
         # Removing additional faces and adjust aspect ratio

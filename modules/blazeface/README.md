@@ -16,6 +16,14 @@ box as well as the confidence values.
 - `min_score_thresh` (`float`) : `0.5`, The minimum confidence score for the face detection to be considered successful.
 - `batch_size` (`int`) : `50`,  Number of samples to process at once, increases speed but also (V)RAM consumption.
 - `repeat_last` (`bool`) : `True`,  If set to true frames with a confidence below "min_score_thresh" will be replaced with the last frame where the confidence is above the threshold. The confidence of the replaced frame is set to zero.
+- `letterbox` (`bool`) : `True`, Aspect-preserving resize with symmetric zero
+  padding to the square model input, matching MediaPipe's default
+  (ImageTransformationCalculator FIT + DetectionLetterboxRemoval); output
+  coordinates are mapped back to the original frame. Set to `False` to
+  restore the pre-1.1.0 behavior (non-square frames squash-resized, faces
+  distorted by the aspect ratio, e.g. 1.78x wider on 16:9 input). Streams
+  recorded before 1.1.0 were produced with the squash path; boxes differ
+  slightly (IoU ~0.88 on a 976:1080 test session, more on wider aspects).
 
 ## IO
 Explanation of inputs and outputs as specified in the trainer file:
