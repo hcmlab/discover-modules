@@ -1,0 +1,5 @@
+hcai-discover-utils
+openface-test
+torch
+torchvision
+timm

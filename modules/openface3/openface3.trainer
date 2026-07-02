@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<trainer ssi-v="5">
+<info trained="true" seed="1234"/>
+<meta backend="nova-server" category="Face" description="OpenFace 3.0 multitask facial analysis: categorical emotion (AffectNet-8), gaze direction and 8 action units from one forward pass." is_iterable="False">
+    <io type="input" id="video" data="stream:Video" default_value="video" />
+    <io type="input" id="face_bb" data="stream:SSIStream:blazeface" default_value="face_bounding_box" />
+
+    <io type="output" id="expression" data="annotation:Discrete" default_value="emotion" />
+    <io type="output" id="action_units" data="stream:SSIStream:feature;face;openface3" default_value="openface3_au" />
+    <io type="output" id="gaze" data="stream:SSIStream:feature;face;openface3" default_value="openface3_gaze" />
+    <io type="output" id="embedding" data="stream:SSIStream" default_value="openface3" />
+
+    <uri id="mtl_backbone" url="https://huggingface.co/nutPace/openface_weights/resolve/main/MTL_backbone.pth" hash="72f45843c7a3ed9500835c507467f32e864a23971160f733aeb23797a05a5bcd" tar="False" />
+</meta>
+<model create="OpenFace3" script="openface3_script.py" optstr="{batch_size:STRING:64};{face_detection_min_conf:STRING:0.5};{margin:STRING:0.2}"/>
+</trainer>

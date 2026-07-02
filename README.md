@@ -55,6 +55,7 @@ The integration code in this repository is licensed under the [GNU General Publi
 | german_sentiment | MIT | Yes |
 | lens | - | - |
 | libreface | USC Research License | No (research/education only) |
+| openface3 | unstated (research release) | No (treat as research-only until upstream clarifies) |
 | opensmile | audEERING Research License | No (requires paid license) |
 | rbdm | CC BY-NC-ND 4.0 | No |
 | sentiment | Apache 2.0 | Yes |
