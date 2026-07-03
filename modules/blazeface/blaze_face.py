@@ -42,12 +42,7 @@ _default_options = {
     "min_suppression_thresh": 0.3,
     "model": "back",
     "batch_size": 250,
-    "force_square_ar": True,
     "repeat_last": True,
-    # Aspect-preserving resize + symmetric padding, like MediaPipe's
-    # ImageTransformationCalculator (FIT) + DetectionLetterboxRemoval.
-    # False restores the old squash-resize (streams recorded before v1.1.0).
-    "letterbox": True,
 }
 
 # Full-resolution frames are uploaded and resized on the GPU in sub-chunks of
@@ -143,12 +138,6 @@ class BlazeFace(Processor):
         self.model.load_anchors(anchors)
 
         self.input_size = input_size[0]
-        self.letterbox = string_to_bool(str(self.options["letterbox"]))
-        self.transform = v2.Compose(
-            [
-                v2.Resize(size=input_size, antialias=True),
-            ]
-        )
 
         # Optionally change the thresholds:
         self.model.min_score_thresh = float(self.options["min_score_thresh"])
@@ -156,7 +145,6 @@ class BlazeFace(Processor):
             self.options["min_suppression_thresh"]
         )
         self.batch_size = int(self.options["batch_size"])
-        self.force_square_ar = string_to_bool(self.options["force_square_ar"])
         self.repeat_last = string_to_bool(self.options["repeat_last"])
 
         # TODO allow detection of more than one face
@@ -195,48 +183,20 @@ class BlazeFace(Processor):
             idx = np.argsort(x[:, 16])[-self.num_faces:]
             pred = x[idx]
 
-        # Adapt aspect ratio to original image
-        if self.force_square_ar:
+        # Letterboxed input preserves the aspect ratio, so boxes are already
+        # square in pixel space after letterbox removal. Sanity-check only.
+        meta_data = self.session_manager.input_data[INPUT_ID].meta_data
+        orig_height = meta_data.sample_shape[-3]
+        orig_width = meta_data.sample_shape[-2]
 
-            meta_data = self.session_manager.input_data[INPUT_ID].meta_data
-            orig_height = meta_data.sample_shape[-3]
-            orig_width = meta_data.sample_shape[-2]
+        h_bb = abs(pred[:, 2] - pred[:, 0]) * orig_height
+        w_bb = abs(pred[:, 3] - pred[:, 1]) * orig_width
 
-            h_gt_w = orig_height > orig_width
-
-            # Stretch width
-            if h_gt_w:
-                # Ratio height to width
-                ratio = orig_height / orig_width
-
-                # Difference of the current bounding box width to the scaled bounding box width
-                bb_width = abs(pred[:, 3] - pred[:, 1])
-                diff_x_scaled = bb_width * ratio - bb_width
-
-                # Adding half the distance to the end and abstract half distance from the beginning
-                pred[:, 1] = pred[:, 1] - diff_x_scaled / 2
-                pred[:, 3] = pred[:, 3] + diff_x_scaled / 2
-
-            # Stretch height
-            else:
-                # Ratio width to height
-                ratio = orig_width / orig_height
-
-                # Difference of the current bounding box height to the scaled bounding box height
-                bb_height = abs(pred[:, 2] - pred[:, 0])
-                diff_y_scaled = bb_height * ratio - bb_height
-
-                # Adding half the distance to the end and abstract half distance from the beginning
-                pred[:, 0] = pred[:, 0] - diff_y_scaled / 2
-                pred[:, 2] = pred[:, 2] + diff_y_scaled / 2
-
-            h_bb = abs(pred[:, 2] - pred[:, 0]) * orig_height
-            w_bb = abs(pred[:, 3] - pred[:, 1]) * orig_width
-
-            # Maximum difference between length and width in pixels to still be considered square. Compensates for rounding errors.
-            max_ar_diff = 1
-            if abs(int(h_bb) - int(w_bb)) > max_ar_diff:
-                raise ValueError(f'Assertion Error: Bounding box aspect ratio is forced to be 1:1 but {h_bb / w_bb} ')
+        # Maximum difference between length and width in pixels to still be considered square.
+        # Compensates for rounding errors (letterbox resize rounds the scaled side to whole pixels).
+        max_ar_diff = 2
+        if np.any(np.abs(h_bb - w_bb) > max_ar_diff):
+            raise ValueError(f'Assertion Error: Bounding box aspect ratio is forced to be 1:1 but {h_bb / w_bb} ')
 
         return pred
 
@@ -264,22 +224,19 @@ class BlazeFace(Processor):
                 continue
 
             frame = np.asarray(data[idxs])
-            if self.letterbox:
-                # MediaPipe-style FIT: aspect-preserving resize + symmetric
-                # zero padding to the square model input
-                H, W = frame.shape[1:3]
-                S = self.input_size
-                scale = S / max(H, W)
-                new_h = min(S, max(1, round(H * scale)))
-                new_w = min(S, max(1, round(W * scale)))
-                pad_t, pad_l = (S - new_h) // 2, (S - new_w) // 2
-                tf = v2.Compose([
-                    v2.Resize(size=(new_h, new_w), antialias=True),
-                    v2.Pad(padding=[pad_l, pad_t, S - new_w - pad_l, S - new_h - pad_t],
-                           fill=0),
-                ])
-            else:
-                tf = self.transform
+            # MediaPipe-style FIT: aspect-preserving resize + symmetric
+            # zero padding to the square model input
+            H, W = frame.shape[1:3]
+            S = self.input_size
+            scale = S / max(H, W)
+            new_h = min(S, max(1, round(H * scale)))
+            new_w = min(S, max(1, round(W * scale)))
+            pad_t, pad_l = (S - new_h) // 2, (S - new_w) // 2
+            tf = v2.Compose([
+                v2.Resize(size=(new_h, new_w), antialias=True),
+                v2.Pad(padding=[pad_l, pad_t, S - new_w - pad_l, S - new_h - pad_t],
+                       fill=0),
+            ])
             # upload + resize in sub-chunks; the resized frames (128/256 px)
             # are small, so the detector still sees the whole batch at once
             frame_t = torch.cat([
@@ -291,11 +248,10 @@ class BlazeFace(Processor):
                 for j in range(0, len(frame), UPLOAD_CHUNK)
             ])
             detections = self.model.predict_on_batch(frame_t)
-            if self.letterbox:
-                detections = [
-                    self._remove_letterbox(d, pad_t, pad_l, new_h, new_w)
-                    for d in detections
-                ]
+            detections = [
+                self._remove_letterbox(d, pad_t, pad_l, new_h, new_w)
+                for d in detections
+            ]
             predictions.extend(detections)
 
         # Removing additional faces and adjust aspect ratio
@@ -427,7 +383,7 @@ if __name__ == "__main__":
     bf = BlazeFace(
         model_io=None,
         trainer=bf_trainer,
-        opts={"force_square_ar": True, "model": "front"},
+        opts={"model": "front"},
     )
 
     video = True
