@@ -27,7 +27,7 @@ from discover_utils.data.static import Image
 from discover_utils.data.stream import SSIStream
 
 PYTORCH_ENABLE_MPS_FALLBACK = 1
-INPUT_ID = "data"
+INPUT_ID = "video"
 INPUT_ID_BB = "bounding_box"
 OUTPUT_ID = "landmarks"
 MEDIA_TYPE_ID = "feature;face;landmarks;facemesh"

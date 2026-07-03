@@ -2,9 +2,9 @@
 <trainer ssi-v="5">
 <info trained="true" seed="1234"/>
 <meta backend="nova-server" category="Face" description="Calculates the bounding box around a single face in a video stream." is_iterable="False">
-    <io type="input" id="data" data="stream:Video" default_value="video" />
-    <io type="input" id="bounding_box" data="stream:SSIStream:feature;face;boundingbox" default_value="face_bounding_box" />
-    <io type="output" id="landmarks" data="stream:SSIStream:feature;face;landmarks:facemesh" default_value="face_mesh" />
+    <io type="input" id="video" data="stream:Video" default_value="video" />
+    <io type="input" id="bounding_box" data="stream:SSIStream:feature;face;boundingbox;blazeface" default_value="face_bounding_box" />
+    <io type="output" id="landmarks" data="stream:SSIStream:feature;face;landmarks;facemesh" default_value="face_mesh" />
     <uri id="weights" url="https://github.com/tiqq111/mediapipe_pytorch/raw/refs/heads/main/facial_landmarks/model_weights/facial_landmarks.pth" hash="43183e63193445731be64855c13f8db2a4182193503f319ae6fe741292f1fc91" tar="False" />
 </meta>
 <model create="FaceMesh" script="facemesh.py" optstr="{batch_size:STRING:250}"/>
