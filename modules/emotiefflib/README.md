@@ -12,7 +12,7 @@ forward pass.
 Inputs:
 
 - `video`: the input video
-- `face_bb`: face bounding box stream from the `blazeface` module
+- `bounding_box`: face bounding box stream from the `blazeface` module
 
 Outputs:
 

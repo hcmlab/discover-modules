@@ -41,7 +41,7 @@ from discover_utils.utils.log_utils import log
 from discover_utils.utils.type_definitions import SSINPDataType
 
 INPUT_ID = "video"
-INPUT_ID_BB = "face_bb"
+INPUT_ID_BB = "bounding_box"
 OUTPUT_ID_EXPRESSION = "expression"
 OUTPUT_ID_VALENCE = "valence"
 OUTPUT_ID_AROUSAL = "arousal"
@@ -265,7 +265,7 @@ class EmotiEffLib(Processor):
         self.session_manager.output_data_templates[OUTPUT_ID_EMBEDDING] = SSIStream(
             data=np.array(data["embedding"], SSINPDataType.FLOAT.value),
             sample_rate=sr_hz,
-            media_type="feature;face;emotiefflib",
+            media_type="feature;face;embedding;emotiefflib",
         )
 
         return self.session_manager.output_data_templates
