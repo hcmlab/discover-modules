@@ -4,7 +4,8 @@ Author: Tobias Hallmen <tobias.hallmen@uni-a.de>
 Date: 02.07.2026
 cf. https://github.com/CMU-MultiComp-Lab/OpenFace-3.0
 
-Multitask facial analysis (pip `openface-test`): one EfficientNet-B0 forward
+Multitask facial analysis (predictor vendored in ./openface from pip
+`openface-test`, see its __init__.py): one EfficientNet-B0 forward
 yields 8-class expression (AffectNet-8), gaze direction (yaw, pitch) and
 8 action-unit scores. Successor to the OpenFace 2 toolchain.
 
@@ -40,7 +41,7 @@ from discover_utils.utils.log_utils import log
 from discover_utils.utils.type_definitions import SSINPDataType
 
 INPUT_ID = "video"
-INPUT_ID_BB = "face_bb"
+INPUT_ID_BB = "bounding_box"
 OUTPUT_ID_EXPRESSION = "expression"
 OUTPUT_ID_AU = "action_units"
 OUTPUT_ID_GAZE = "gaze"
@@ -70,7 +71,11 @@ _label_map = {
 _AU_ORDER = [1, 2, 4, 6, 9, 12, 25, 26]
 AU_DIM_LABELS = [{"id": i, "name": f"AU{n}"} for i, n in enumerate(_AU_ORDER)]
 GAZE_DIM_LABELS = [{"id": 0, "name": "gaze_yaw"}, {"id": 1, "name": "gaze_pitch"}]
-MEDIA_TYPE = "feature;face;openface3"
+MEDIA_TYPES = {
+    "action_units": "feature;face;actionunits;openface3",
+    "gaze": "feature;face;gaze;openface3",
+    "embedding": "feature;face;embedding;openface3",
+}
 
 
 def _blaze_face_converter(detection: np.ndarray, img_shape: tuple):
@@ -236,7 +241,7 @@ class OpenFace3(Processor):
                               SSINPDataType.FLOAT.value),
                 sample_rate=sr_hz,
                 dim_labels=dim_labels,
-                media_type=MEDIA_TYPE,
+                media_type=MEDIA_TYPES[out_id],
             )
 
         return self.session_manager.output_data_templates

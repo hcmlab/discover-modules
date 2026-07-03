@@ -1,5 +1,5 @@
 hcai-discover-utils
-openface-test
+opencv-python
 torch
 torchvision
 timm

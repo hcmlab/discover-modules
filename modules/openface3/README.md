@@ -1,9 +1,15 @@
 # OpenFace 3.0
 
 Multitask facial analysis via
-[OpenFace 3.0](https://github.com/CMU-MultiComp-Lab/OpenFace-3.0)
-(pip `openface-test`): one EfficientNet-B0 forward pass yields 8-class
-facial expression (AffectNet-8), gaze direction and 8 action units.
+[OpenFace 3.0](https://github.com/CMU-MultiComp-Lab/OpenFace-3.0):
+one EfficientNet-B0 forward pass yields 8-class facial expression
+(AffectNet-8), gaze direction and 8 action units.
+
+The multitask predictor is vendored in `openface/` (from pip
+`openface-test` 0.1.26): that package pins `Pillow==9.4.0`, which has no
+Python >= 3.12 wheels and makes the venv uninstallable, and its bundled
+RetinaFace/STAR detectors are unused here (detection comes from the
+blazeface stream).
 Successor to the OpenFace 2 toolchain (which is Windows-bound in our
 setups); note OpenFace 3 predicts FEWER outputs than OpenFace 2
 (8 AUs instead of 17/18, no head pose in the multitask head).
@@ -13,7 +19,7 @@ setups); note OpenFace 3 predicts FEWER outputs than OpenFace 2
 Inputs:
 
 - `video`: the input video
-- `face_bb`: face bounding box stream from the `blazeface` module
+- `bounding_box`: face bounding box stream from the `blazeface` module
 
 Outputs:
 
@@ -56,6 +62,7 @@ Outputs:
 ## License
 
 OpenFace 3.0 code is research-oriented; the pip package `openface-test`
-declares no license and the model was trained on research datasets
+(from which `openface/` is vendored) declares no license and the model
+was trained on research datasets
 (AffectNet among others). TODO-verify the upstream license before any
 non-research use; treat as research-only until confirmed.
