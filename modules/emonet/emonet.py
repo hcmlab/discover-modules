@@ -25,7 +25,7 @@ from discover_utils.utils.type_definitions import SSINPDataType
 from discover_utils.data.stream import SSIStream
 
 INPUT_ID = "video"
-INPUT_ID_BB = "face_bb"
+INPUT_ID_BB = "bounding_box"
 OUTPUT_ID_EXPRESSION = "expression"
 OUTPUT_ID_AROUSAL = "arousal"
 OUTPUT_ID_VALENCE = "valence"
@@ -217,7 +217,8 @@ class EmoNet(Processor):
         # embeddings
         self.session_manager.output_data_templates[OUTPUT_ID_EMBEDDING] = SSIStream(
             data=np.array(data["embedding"], SSINPDataType.FLOAT.value),
-            sample_rate=sr_hz
+            sample_rate=sr_hz,
+            media_type="feature;face;embedding;emonet",
         )
 
         return self.session_manager.output_data_templates

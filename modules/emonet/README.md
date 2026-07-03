@@ -14,7 +14,7 @@ Explanation of inputs and outputs as specified in the trainer file
 
 The input of the model is a video and feature stream containing the bounding box for the face in the video:
 - `input_data` (`Image` | `Video`) : The image or video on which the model should detect the emotions
-- `face_bb` (`SSIStream:blazeface`) : The bounding box stream as created by the [blaze_face](../blazeface) model
+- `bounding_box` (`SSIStream:feature;face;boundingbox;blazeface`) : The bounding box stream as created by the [blaze_face](../blazeface) model
 
 The output of the model are three annotations
 - `expression` (`DiscreteAnnotation`): A discrete annotation with either 5 or 8 categorical emotions
@@ -51,7 +51,7 @@ payload = {
   "jobID" : "emonet",
   "data": json.dumps([
     {"src":"file:stream:video", "type":"input", "id":"input_data", "uri":"path/to/my/video.mp4"},
-    {"src":"file:stream:ssifeature", "type":"input", "id":"face_bb", "uri":"path/to/my/bounding_boxes.stream"},
+    {"src":"file:stream:ssifeature", "type":"input", "id":"bounding_box", "uri":"path/to/my/bounding_boxes.stream"},
     {"src":"file:annotation:discrete", "type":"output", "id":"expression",  "uri":"path/to/my/expression.annotation"},
     {"src":"file:annotation:continuous", "type":"output", "id":"valence",  "uri":"path/to/my/valence.annotation"},
     {"src":"file:annotation:continuous", "type":"output", "id":"arousal",  "uri":"path/to/my/arousal.annotation"}
