@@ -2,26 +2,33 @@
 
 Facial action units (12 binary BP4D detections + 12 DISFA intensities),
 facial expression (AffectNet-8) and FER embeddings via
-[LibreFace](https://github.com/ihp-lab/LibreFace) (pip `libreface`, pure
-PyTorch).
+[LibreFace](https://github.com/ihp-lab/LibreFace) (pure PyTorch).
+
+The needed solver/model files are vendored in `libreface/` (from pip
+`libreface` 0.2.0, USC Research License): the pip package pins
+`mediapipe==0.10.5`, which has no Python >= 3.12 wheels and is therefore
+uninstallable, while mediapipe itself is never used by this module (face
+detection/alignment comes from the facemesh stream).
 
 ## I/O
 
 Inputs:
 
 - `video`: the input video
-- `facemesh`: 468-landmark stream from the `facemesh` module (used for the
+- `landmarks`: 468-landmark stream from the `facemesh` module (used for the
   FFHQ-style face alignment LibreFace models expect)
 
 Outputs:
 
-- `libreface_stream`: SSIStream, 24 dims: `AU{1,2,4,6,7,10,12,14,15,17,23,24}_c`
+- `action_units`: SSIStream (default name `libreface_au`), 24 dims: `AU{1,2,4,6,7,10,12,14,15,17,23,24}_c`
   (binary detection) + `AU{1,2,4,5,6,9,12,15,17,20,25,26}_r` (intensity 0-5)
-- `libreface_emotion`: discrete annotation, AffectNet-8 order (Neutral,
+- `expression`: discrete annotation (scheme `emotion`), AffectNet-8 order (Neutral,
   Happiness, Sadness, Surprise, Fear, Disgust, Anger, Contempt) + rest class
   (id 8) for frames without a valid face; confidence = FER softmax max
 - `aligned`: 256x256 aligned face video (debug/downstream reuse)
 - `embedding`: SSIStream with the FER student model's penultimate features
+- `au_embedding`: SSIStream with the AU model's shared 512-d encoder features
+  (both AU heads run on these)
 
 ## Options
 

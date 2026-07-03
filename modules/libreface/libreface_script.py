@@ -4,7 +4,8 @@ Author: Tobias Hallmen <tobias.hallmen@uni-a.de>
 Date: 02.07.2026
 cf. https://github.com/ihp-lab/LibreFace
 
-Rewrite of the original module (pure PyTorch since pip libreface, no ONNX):
+Rewrite of the original module (pure PyTorch, no ONNX; the needed LibreFace
+solvers are vendored in ./libreface, see its __init__.py):
 
 - Face alignment (FFHQ-style, from facemesh landmarks) now runs BATCHED ON THE
   GPU via torch.affine_grid/grid_sample instead of the per-frame PIL/scipy warp
@@ -16,7 +17,9 @@ Rewrite of the original module (pure PyTorch since pip libreface, no ONNX):
   per batch anymore: the upstream *_video() helpers construct the solver and
   re-download/load weights on EVERY call) are built once in __init__ and reused.
 - FER now outputs a real softmax confidence instead of a constant 1.0, plus the
-  penultimate features as an embedding stream.
+  penultimate features as an embedding stream; the AU encoder's shared 512-d
+  features go out as a separate au_embedding stream (computed once, both AU
+  heads run on it).
 - Frames whose facemesh confidence is below min_conf get the rest class /
   zeroed outputs instead of a mean-gray warp.
 
@@ -45,11 +48,12 @@ from discover_utils.utils.log_utils import log
 from discover_utils.utils.type_definitions import SSINPDataType
 
 INP_VID = "video"
-INP_FM = "facemesh"
-OUT_LF = "libreface_stream"
-OUT_LF_EMO = "libreface_emotion"
+INP_FM = "landmarks"
+OUT_LF = "action_units"
+OUT_LF_EMO = "expression"
 OUT_ALIGN = "aligned"
 OUT_EMBEDDING = "embedding"
+OUT_AU_EMBEDDING = "au_embedding"
 
 _default_options = {
     "batch_size": 256,
@@ -68,7 +72,9 @@ regression = [1, 2, 4, 5, 6, 9, 12, 15, 17, 20, 25, 26]
 emotions = ["Neutral", "Happiness", "Sadness", "Surprise", "Fear", "Disgust", "Anger", "Contempt"]
 DIM_LABELS = [f"AU{x}_c" for x in detection] + [f"AU{x}_r" for x in regression]
 DIM_LABELS = [{"id": i, "name": x} for i, x in enumerate(DIM_LABELS)]
-MEDIA_TYPE = "feature;face;libreface"
+MEDIA_TYPE_AU = "feature;face;actionunits;libreface"
+MEDIA_TYPE_ALIGNED = "feature;face;aligned;libreface"
+MEDIA_TYPE_EMBEDDING = "feature;face;embedding;libreface"
 SUBDIR = "downloads/libreface"
 
 ALIGN_SIZE = 256      # FFHQ output_size (what the models were trained on)
@@ -149,13 +155,20 @@ class LibreFace(Processor):
 
         # Build the solvers ONCE (their __init__ downloads + loads the weights).
         # Configs replicate the upstream *_video() helpers verbatim.
-        from libreface.AU_Recognition.inference import ConfigObject
+        # libreface here is the vendored subset shipped with this module (the
+        # pip package is uninstallable on Python >= 3.12, see its __init__.py).
         from libreface.AU_Recognition.solver_inference_combine import (
             solver_inference_image_task_combine,
         )
         from libreface.Facial_Expression_Recognition.solver_inference_image import (
             solver_inference_image,
         )
+
+        # Upstream libreface.AU_Recognition.inference.ConfigObject
+        class ConfigObject:
+            def __init__(self, config_dict):
+                for key, value in config_dict.items():
+                    setattr(self, key, value)
 
         au_opts = ConfigObject({
             "seed": 0,
@@ -271,17 +284,21 @@ class LibreFace(Processor):
         probs[:, 8] = 1.0                        # default: rest class (no face)
         aligned = np.zeros((B, ALIGN_SIZE, ALIGN_SIZE, 3), dtype=np.uint8)
         embedding = None
+        au_embedding = None
 
         idx = np.where(valid)[0]
         if len(idx):
             with torch.no_grad():
                 al = self._align_gpu(images[idx], quads[idx])   # [n,3,256,256] 0..1
 
-                # AU branch: CenterCrop(224) of the 256 aligned image + ImageNet norm
+                # AU branch: CenterCrop(224) of the 256 aligned image + ImageNet norm.
+                # Run the shared ResNet18 encoder once and apply both heads to it
+                # (the model's forward() re-runs the encoder per task_name).
                 off = (ALIGN_SIZE - CROP_SIZE) // 2
                 au_in = self._norm(al[:, :, off:off + CROP_SIZE, off:off + CROP_SIZE])
-                au_det = (self.au_solver.model(au_in, task_name="au_detection") >= 0.5).int()
-                au_int = self.au_solver.model(au_in, task_name="au_recognition") * 5.0
+                au_feat = self.au_solver.model.encoder(au_in).reshape(len(idx), -1)
+                au_det = (self.au_solver.model.classifier_2(au_feat) >= 0.5).int()
+                au_int = self.au_solver.model.classifier(au_feat) * 5.0
 
                 # FER branch: straight resize 256 -> 224 + ImageNet norm
                 fer_in = self._norm(F.interpolate(al, size=(224, 224), mode="bicubic",
@@ -296,8 +313,10 @@ class LibreFace(Processor):
             aligned[idx] = (al.permute(0, 2, 3, 1) * 255).round().byte().cpu().numpy()
             embedding = np.zeros((B, feat.shape[-1]), dtype=np.float32)
             embedding[idx] = feat.cpu().numpy()
+            au_embedding = np.zeros((B, au_feat.shape[-1]), dtype=np.float32)
+            au_embedding[idx] = au_feat.cpu().numpy()
 
-        return aus, probs, aligned, embedding
+        return aus, probs, aligned, embedding, au_embedding
 
     def process_data(self, ds_manager) -> dict:
         self.session_manager = self.get_session_manager(ds_manager)
@@ -310,8 +329,9 @@ class LibreFace(Processor):
             data = np.expand_dims(data, 0)
 
         from time import perf_counter
-        aus, probs, aligned, embeddings = [], [], [], []
+        aus, probs, aligned, embeddings, au_embeddings = [], [], [], [], []
         emb_dim = None
+        au_emb_dim = None
         iter_len = min(len(data), len(fm_data))
         tot_batch = -(-iter_len // self.batch_size)
         for i in range(0, iter_len, self.batch_size):
@@ -319,13 +339,15 @@ class LibreFace(Processor):
             if not idxs:
                 continue
             s = perf_counter()
-            a, p, al, emb = self.process_sample(np.asarray(data[idxs]), fm_data[idxs])
+            a, p, al, emb, au_emb = self.process_sample(np.asarray(data[idxs]), fm_data[idxs])
             aus.append(a)
             probs.append(p)
             aligned.append(al)
             if emb is not None:
                 emb_dim = emb.shape[-1]
+                au_emb_dim = au_emb.shape[-1]
             embeddings.append(emb)
+            au_embeddings.append(au_emb)
             e = perf_counter()
             log(f"Batch {i // self.batch_size + 1} of {tot_batch}: {e - s:.3f}s/batch,"
                 f" {(e - s) / len(idxs) * 1000:.1f}ms/frame")
@@ -333,9 +355,14 @@ class LibreFace(Processor):
         # batches without any valid face returned emb=None; backfill zeros
         if emb_dim is None:
             emb_dim = 1
+            au_emb_dim = 1
         embeddings = [
             e if e is not None else np.zeros((len(a), emb_dim), np.float32)
             for e, a in zip(embeddings, aus)
+        ]
+        au_embeddings = [
+            e if e is not None else np.zeros((len(a), au_emb_dim), np.float32)
+            for e, a in zip(au_embeddings, aus)
         ]
 
         torch.cuda.empty_cache()
@@ -346,6 +373,8 @@ class LibreFace(Processor):
             np.zeros((0, ALIGN_SIZE, ALIGN_SIZE, 3), np.uint8),
             "embedding": np.concatenate(embeddings) if embeddings else
             np.zeros((0, emb_dim), np.float32),
+            "au_embedding": np.concatenate(au_embeddings) if au_embeddings else
+            np.zeros((0, au_emb_dim), np.float32),
         }
 
     def to_output(self, data: dict) -> dict:
@@ -372,7 +401,7 @@ class LibreFace(Processor):
             data=data["aus"].astype(np.dtype("<f4")),
             sample_rate=sr_hz,
             dim_labels=DIM_LABELS,
-            media_type=MEDIA_TYPE,
+            media_type=MEDIA_TYPE_AU,
             role=output_templates[OUT_LF].meta_data.role,
             dataset=output_templates[OUT_LF].meta_data.dataset,
             name=output_templates[OUT_LF].meta_data.name,
@@ -381,7 +410,7 @@ class LibreFace(Processor):
         output_templates[OUT_ALIGN] = Video(
             data=data["aligned"],
             sample_rate=sr_hz,
-            media_type=MEDIA_TYPE,
+            media_type=MEDIA_TYPE_ALIGNED,
             role=output_templates[OUT_ALIGN].meta_data.role,
             dataset=output_templates[OUT_ALIGN].meta_data.dataset,
             name=output_templates[OUT_ALIGN].meta_data.name,
@@ -390,6 +419,11 @@ class LibreFace(Processor):
         output_templates[OUT_EMBEDDING] = SSIStream(
             data=np.array(data["embedding"], SSINPDataType.FLOAT.value),
             sample_rate=sr_hz,
-            media_type=MEDIA_TYPE,
+            media_type=MEDIA_TYPE_EMBEDDING,
+        )
+        output_templates[OUT_AU_EMBEDDING] = SSIStream(
+            data=np.array(data["au_embedding"], SSINPDataType.FLOAT.value),
+            sample_rate=sr_hz,
+            media_type=MEDIA_TYPE_EMBEDDING,
         )
         return output_templates

@@ -1,4 +1,5 @@
 hcai-discover-utils
-libreface
+gdown
+timm
 torch
 torchvision
